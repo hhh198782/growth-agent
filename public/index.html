@@ -9,11 +9,14 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <h1>Growth Agent</h1>
-          <p>个人微信小号推广草稿助手，只生成和记录，不自动发送。</p>
+          <p>微信小程序转发增长工作台，不自动群发。</p>
         </div>
-        <button class="ghost-button" id="refreshBtn" type="button">刷新</button>
+        <div class="top-actions">
+          <div class="status-strip" id="connectionSummary"></div>
+          <button class="ghost-button" id="refreshBtn" type="button">刷新</button>
+        </div>
       </header>
 
       <main class="workspace">
@@ -21,83 +24,84 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h2>微信小程序接入</h2>
-                <p>粘贴 AppID 和 AppSecret，系统会自动检测授权、导入资料并创建活动。</p>
+                <h2>连接中心</h2>
+                <p>小程序资料和个人微信目标统一在这里接入。</p>
               </div>
             </div>
 
-            <form id="wechatConnectForm" class="stack">
-              <label>
-                授权信息
-                <textarea
-                  name="authorizationText"
-                  id="wechatAuthorizationText"
-                  rows="5"
-                  placeholder="AppID: wx1234567890abcdef&#10;AppSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  autocomplete="off"
-                  spellcheck="false"
-                ></textarea>
-                <span class="field-help">输入完成后会自动检测；密钥只保存在本机 SQLite，不会在页面列表里显示。</span>
-              </label>
-              <div class="auth-status idle" id="wechatAuthStatus">等待输入 AppID 和 AppSecret</div>
-              <div class="button-row">
-                <button class="primary-button" type="submit">检测并创建活动</button>
-                <button class="small-button" data-action="clear-wechat-auth" type="button">清空</button>
+            <div class="connector-stack">
+              <div class="connector-block">
+                <div class="connector-title">
+                  <span>小程序授权</span>
+                  <span class="badge">官方接口</span>
+                </div>
+                <form id="wechatConnectForm" class="stack">
+                  <label>
+                    AppID / AppSecret
+                    <textarea
+                      name="authorizationText"
+                      id="wechatAuthorizationText"
+                      rows="4"
+                      placeholder="AppID: wx1234567890abcdef&#10;AppSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      autocomplete="off"
+                      spellcheck="false"
+                    ></textarea>
+                  </label>
+                  <div class="auth-status idle" id="wechatAuthStatus">等待小程序授权信息</div>
+                  <div class="button-row">
+                    <button class="primary-button" type="submit">检测并创建活动</button>
+                    <button class="small-button" data-action="clear-wechat-auth" type="button">清空</button>
+                  </div>
+                </form>
               </div>
-            </form>
 
-            <div class="stack compact-stack">
-              <label>
-                选择小程序
-                <select id="miniappSelect"></select>
-              </label>
-              <div class="button-row single">
-                <button class="primary-button" data-action="create-selected-miniapp" type="button">创建活动</button>
+              <div class="connector-block">
+                <div class="connector-title">
+                  <span>个人微信连接</span>
+                  <span class="badge warn">WeChatFerry / WCF</span>
+                </div>
+                <div class="wechat-login-grid">
+                  <div class="qr-card" id="wechatQrCard">
+                    <div class="qr-placeholder" id="wechatQr"></div>
+                  </div>
+                  <div class="wechat-status">
+                    <p class="row-title" id="wechatPersonalStatus">未连接</p>
+                    <p class="row-meta" id="wechatPersonalNote">官方 Windows 微信扫码登录后，通过 WCF 同步微信群目标；不自动群发。</p>
+                    <div class="actions compact-actions">
+                      <button class="primary-button" data-action="start-wechat-login" type="button">扫码登录</button>
+                      <button class="small-button" data-action="confirm-wechat-login" type="button">我已登录</button>
+                    </div>
+                  </div>
+                </div>
+
+                <form id="wechatSyncForm" class="stack sync-form">
+                  <label>
+                    同步微信群
+                    <textarea
+                      name="labels"
+                      rows="5"
+                      placeholder="每行一个群名，或粘贴连接器同步结果"
+                    ></textarea>
+                  </label>
+                  <button class="primary-button" type="submit">同步到转发目标</button>
+                </form>
+              </div>
+
+              <div class="connector-block">
+                <div class="connector-title">
+                  <span>小程序活动</span>
+                  <span class="badge">资料库</span>
+                </div>
+                <div class="stack compact-stack">
+                  <label>
+                    选择小程序
+                    <select id="miniappSelect"></select>
+                  </label>
+                  <button class="primary-button" data-action="create-selected-miniapp" type="button">创建活动</button>
+                </div>
+                <div class="miniapp-list" id="miniappList"></div>
               </div>
             </div>
-
-            <div class="miniapp-list" id="miniappList"></div>
-          </section>
-
-          <section class="panel">
-            <h2>批量添加白名单</h2>
-            <form id="targetForm" class="stack">
-              <label>
-                群/好友/朋友圈名称
-                <textarea
-                  name="labels"
-                  rows="7"
-                  required
-                  placeholder="每行一个，例如：&#10;A青岛装修合作共赢群&#10;A南京工程装修资源整合群&#10;A深圳装修设计交流群"
-                ></textarea>
-              </label>
-              <p class="helper-text">支持一行一个，也支持用逗号、分号分隔。粘贴很长的 A 开头群列表时，会尝试自动拆开。</p>
-              <label>
-                类型
-                <select name="kind">
-                  <option value="group">微信群</option>
-                  <option value="friend">好友</option>
-                  <option value="moments">朋友圈</option>
-                </select>
-              </label>
-              <label>
-                风险等级
-                <select name="riskLevel">
-                  <option value="low">低</option>
-                  <option value="medium">中</option>
-                  <option value="high">高</option>
-                </select>
-              </label>
-              <label class="check-row">
-                <input name="allowed" type="checkbox" checked>
-                允许生成草稿
-              </label>
-              <label>
-                备注
-                <textarea name="note" rows="2" placeholder="只发工具分享，不连续刷屏"></textarea>
-              </label>
-              <button class="primary-button" type="submit">批量加入白名单</button>
-            </form>
           </section>
         </aside>
 
@@ -108,7 +112,7 @@
             <div class="section-head">
               <div>
                 <h2>推广活动</h2>
-                <p>为每个活动生成带来源码的小程序路径。</p>
+                <p>每个活动都会生成带来源码的小程序路径。</p>
               </div>
             </div>
             <div class="campaign-list" id="campaignList"></div>
@@ -117,10 +121,19 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h2>白名单目标</h2>
-                <p>只有这里的目标会进入草稿队列，添加错了可以删除。</p>
+                <h2>转发目标</h2>
+                <p>同步后的微信群、好友、朋友圈目标会进入草稿队列。</p>
               </div>
             </div>
+            <form id="targetForm" class="inline-form">
+              <textarea
+                name="labels"
+                rows="3"
+                required
+                placeholder="补充目标：每行一个微信群、好友或朋友圈"
+              ></textarea>
+              <button class="primary-button" type="submit">加入目标</button>
+            </form>
             <div class="target-list" id="targetList"></div>
           </section>
         </section>
@@ -129,7 +142,7 @@
           <section class="panel fill-panel">
             <div class="section-head">
               <div>
-                <h2>草稿队列</h2>
+                <h2>转发草稿</h2>
                 <p>复制后到微信里人工确认发送。</p>
               </div>
             </div>

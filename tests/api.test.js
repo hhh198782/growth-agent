@@ -225,3 +225,35 @@ test('API connects an official WeChat miniapp and creates a campaign from the im
     );
   }, { wechatClient });
 });
+
+test('API starts personal WeChat scan login and syncs group targets', async () => {
+  await withServer(async ({ baseUrl }) => {
+    const loginResult = await jsonFetch(`${baseUrl}/api/wechat-personal/login/start`, {
+      method: 'POST',
+      body: { mode: 'wcf_http' }
+    });
+    const confirmResult = await jsonFetch(`${baseUrl}/api/wechat-personal/login/confirm`, {
+      method: 'POST',
+      body: { displayName: '个人微信小号' }
+    });
+    const syncResult = await jsonFetch(`${baseUrl}/api/wechat-personal/sync-targets`, {
+      method: 'POST',
+      body: {
+        labels: ['A装修交流群', 'A材料交流群', 'A装修交流群'],
+        kind: 'group',
+        note: '微信扫码同步'
+      }
+    });
+    const stateResult = await jsonFetch(`${baseUrl}/api/state`);
+
+    assert.equal(loginResult.response.status, 201);
+    assert.equal(loginResult.body.status, 'waiting_scan');
+    assert.match(loginResult.body.qrPayload, /^growth-agent:\/\/wechat-login\//);
+    assert.equal(confirmResult.response.status, 200);
+    assert.equal(confirmResult.body.status, 'connected');
+    assert.equal(syncResult.response.status, 201);
+    assert.equal(syncResult.body.created.length, 2);
+    assert.equal(stateResult.body.wechatPersonal.status, 'connected');
+    assert.equal(stateResult.body.wechatPersonal.lastSyncCount, 2);
+  });
+});

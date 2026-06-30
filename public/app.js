@@ -1,4 +1,5 @@
 const state = {
+  wechatPersonal: {},
   miniapps: [],
   campaigns: [],
   targets: [],
@@ -83,7 +84,7 @@ function parseTargetLabels(value) {
 
 function renderMetrics() {
   const metrics = [
-    ['白名单', state.metrics.totalTargets || 0],
+    ['目标', state.metrics.totalTargets || 0],
     ['待处理', state.metrics.queuedDrafts || 0],
     ['已复制', state.metrics.copiedDrafts || 0],
     ['已发送', state.metrics.sentDrafts || 0]
@@ -96,6 +97,21 @@ function renderMetrics() {
       </div>
     `)
     .join('');
+}
+
+function connectionBadge(status) {
+  if (status === 'connected') return '<span class="badge ok">已连接</span>';
+  if (status === 'waiting_scan') return '<span class="badge warn">待扫码</span>';
+  return '<span class="badge">未连接</span>';
+}
+
+function renderConnectionSummary() {
+  const miniappCount = state.miniapps.filter((item) => item.source === 'wechat_official').length;
+  const wechatStatus = state.wechatPersonal?.status || 'disconnected';
+  $('#connectionSummary').innerHTML = `
+    <span class="summary-chip">小程序 ${miniappCount}</span>
+    <span class="summary-chip">微信 ${wechatStatus === 'connected' ? '已连接' : wechatStatus === 'waiting_scan' ? '待扫码' : '未连接'}</span>
+  `;
 }
 
 function miniappStatusBadge(miniapp) {
@@ -125,7 +141,7 @@ function renderMiniapps() {
   ].join('');
 
   if (!state.miniapps.length) {
-    $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。先粘贴 AppID/AppSecret 完成授权检测。</div>';
+    $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。</div>';
     return;
   }
 
@@ -137,7 +153,6 @@ function renderMiniapps() {
             <p class="row-title">${escapeHtml(miniapp.appName)}</p>
             <p class="row-meta">${escapeHtml(miniapp.toolName)} · ${escapeHtml(miniapp.miniappPath)}</p>
             <p class="row-meta">${escapeHtml(sourceLabel(miniapp))}</p>
-            <p class="row-meta">${escapeHtml(miniapp.syncMessage || miniapp.goal || '没有同步说明')}</p>
           </div>
           ${miniappStatusBadge(miniapp)}
         </div>
@@ -147,6 +162,32 @@ function renderMiniapps() {
       </article>
     `)
     .join('');
+}
+
+function renderQr(payload = '') {
+  const qr = $('#wechatQr');
+  if (!payload) {
+    qr.innerHTML = '<span>Windows 微信扫码</span>';
+    qr.classList.add('empty-qr');
+    return;
+  }
+  qr.classList.remove('empty-qr');
+  let seed = 0;
+  for (const char of payload) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
+  const cells = Array.from({ length: 121 }, (_, index) => {
+    const edge = index < 11 || index > 109 || index % 11 === 0 || index % 11 === 10;
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const filled = edge || (seed % 7) < 3;
+    return `<i class="${filled ? 'on' : ''}"></i>`;
+  });
+  qr.innerHTML = cells.join('');
+}
+
+function renderWechatPersonal() {
+  const personal = state.wechatPersonal || {};
+  $('#wechatPersonalStatus').innerHTML = `${connectionBadge(personal.status)} ${escapeHtml(personal.displayName || '个人微信')}`;
+  $('#wechatPersonalNote').textContent = personal.syncNote || '官方 Windows 微信扫码登录后，通过 WCF 同步微信群目标；不自动群发。';
+  renderQr(personal.qrPayload || '');
 }
 
 function renderCampaigns() {
@@ -183,7 +224,7 @@ function badgeForTarget(target) {
 
 function renderTargets() {
   if (!state.targets.length) {
-    $('#targetList').innerHTML = '<div class="empty">还没有白名单目标。</div>';
+    $('#targetList').innerHTML = '<div class="empty">还没有转发目标。</div>';
     return;
   }
 
@@ -244,7 +285,9 @@ function renderDrafts() {
 }
 
 function render() {
+  renderConnectionSummary();
   renderMetrics();
+  renderWechatPersonal();
   renderMiniapps();
   renderCampaigns();
   renderTargets();
@@ -286,7 +329,7 @@ async function connectWechatMiniapp({ auto = false } = {}) {
   const form = $('#wechatConnectForm');
   const authorizationText = form.elements.authorizationText.value.trim();
   if (!authorizationText) {
-    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
+    setAuthStatus('idle', '等待小程序授权信息');
     return;
   }
   if (!looksLikeWechatAuth(authorizationText)) {
@@ -310,7 +353,7 @@ async function connectWechatMiniapp({ auto = false } = {}) {
     const campaign = await createCampaignFromMiniapp(miniapp, { silent: true });
     if (requestId !== authRequestId) return;
     setAuthStatus('success', `授权成功，已创建「${campaign.name}」`);
-    toast('微信小程序授权成功，活动已创建');
+    toast('小程序授权成功，活动已创建');
   } catch (error) {
     if (requestId !== authRequestId) return;
     setAuthStatus('failed', `检测失败：${humanError(error)}`);
@@ -322,7 +365,7 @@ function scheduleWechatConnect() {
   const value = $('#wechatAuthorizationText').value.trim();
   clearTimeout(authTimer);
   if (!value) {
-    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
+    setAuthStatus('idle', '等待小程序授权信息');
     return;
   }
   if (!looksLikeWechatAuth(value)) {
@@ -333,6 +376,72 @@ function scheduleWechatConnect() {
   authTimer = setTimeout(() => {
     connectWechatMiniapp({ auto: true });
   }, 900);
+}
+
+async function startWechatLogin() {
+  const connection = await api('/api/wechat-personal/login/start', {
+    method: 'POST',
+    body: { mode: 'wcf_http' }
+  });
+  state.wechatPersonal = connection;
+  renderWechatPersonal();
+  renderConnectionSummary();
+  toast('WCF 扫码连接流程已启动');
+}
+
+async function confirmWechatLogin() {
+  const connection = await api('/api/wechat-personal/login/confirm', {
+    method: 'POST',
+    body: { displayName: '个人微信小号' }
+  });
+  state.wechatPersonal = connection;
+  renderWechatPersonal();
+  renderConnectionSummary();
+  toast('微信连接已确认');
+}
+
+async function syncWechatTargets(form) {
+  const values = formData(form);
+  const labels = parseTargetLabels(values.labels);
+  if (!labels.length) {
+    toast('没有可同步的群名');
+    return;
+  }
+  const result = await api('/api/wechat-personal/sync-targets', {
+    method: 'POST',
+    body: {
+      labels,
+      kind: 'group',
+      allowed: true,
+      riskLevel: 'low',
+      note: '微信同步目标'
+    }
+  });
+  form.reset();
+  toast(`已同步 ${result.created.length} 个转发目标`);
+  await loadState();
+}
+
+async function addManualTargets(form) {
+  const values = formData(form);
+  const labels = parseTargetLabels(values.labels);
+  if (!labels.length) {
+    toast('没有可添加的目标');
+    return;
+  }
+  const result = await api('/api/targets/bulk', {
+    method: 'POST',
+    body: {
+      labels,
+      kind: 'group',
+      allowed: true,
+      riskLevel: 'low',
+      note: '手动补充目标'
+    }
+  });
+  form.reset();
+  toast(`已添加 ${result.created.length} 个目标`);
+  await loadState();
 }
 
 async function copyText(text) {
@@ -358,27 +467,14 @@ $('#wechatConnectForm').addEventListener('submit', async (event) => {
 
 $('#wechatAuthorizationText').addEventListener('input', scheduleWechatConnect);
 
+$('#wechatSyncForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await syncWechatTargets(event.currentTarget);
+});
+
 $('#targetForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = event.currentTarget;
-  const values = formData(form);
-  const labels = parseTargetLabels(values.labels);
-  if (!labels.length) {
-    toast('没有可添加的名称；请一行一个粘贴群名');
-    return;
-  }
-  const result = await api('/api/targets/bulk', {
-    method: 'POST',
-    body: {
-      ...values,
-      labels,
-      allowed: values.allowed === 'on'
-    }
-  });
-  form.reset();
-  form.elements.allowed.checked = true;
-  toast(`已添加 ${result.created.length} 个白名单`);
-  await loadState();
+  await addManualTargets(event.currentTarget);
 });
 
 document.body.addEventListener('click', async (event) => {
@@ -390,7 +486,17 @@ document.body.addEventListener('click', async (event) => {
   if (action === 'clear-wechat-auth') {
     clearTimeout(authTimer);
     $('#wechatConnectForm').reset();
-    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
+    setAuthStatus('idle', '等待小程序授权信息');
+    return;
+  }
+
+  if (action === 'start-wechat-login') {
+    await startWechatLogin();
+    return;
+  }
+
+  if (action === 'confirm-wechat-login') {
+    await confirmWechatLogin();
     return;
   }
 
@@ -426,7 +532,7 @@ document.body.addEventListener('click', async (event) => {
     if (!target) return;
     if (!window.confirm(`删除「${target.label}」？关联草稿也会一起删除。`)) return;
     await api(`/api/targets/${id}`, { method: 'DELETE' });
-    toast('白名单已删除');
+    toast('目标已删除');
     await loadState();
     return;
   }

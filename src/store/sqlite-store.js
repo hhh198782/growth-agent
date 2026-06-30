@@ -68,6 +68,33 @@ function rowDraft(row) {
   };
 }
 
+function rowWechatPersonal(row) {
+  if (!row) {
+    return {
+      status: 'disconnected',
+      mode: 'wcf_http',
+      sessionId: '',
+      qrPayload: '',
+      displayName: '',
+      syncNote: '',
+      lastSyncAt: '',
+      lastSyncCount: 0,
+      updatedAt: ''
+    };
+  }
+  return {
+    status: row.status,
+    mode: row.mode,
+    sessionId: row.session_id,
+    qrPayload: row.qr_payload,
+    displayName: row.display_name,
+    syncNote: row.sync_note,
+    lastSyncAt: row.last_sync_at,
+    lastSyncCount: row.last_sync_count,
+    updatedAt: row.updated_at
+  };
+}
+
 function normalizeTargetLabel(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -109,6 +136,20 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       app_id TEXT PRIMARY KEY,
       miniapp_id TEXT NOT NULL,
       app_secret TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS wechat_personal (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'disconnected',
+      mode TEXT NOT NULL DEFAULT 'wcf_http',
+      session_id TEXT NOT NULL DEFAULT '',
+      qr_payload TEXT NOT NULL DEFAULT '',
+      display_name TEXT NOT NULL DEFAULT '',
+      sync_note TEXT NOT NULL DEFAULT '',
+      last_sync_at TEXT NOT NULL DEFAULT '',
+      last_sync_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -424,6 +465,95 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     return created;
   }
 
+  function getWechatPersonal() {
+    const row = db.prepare('SELECT * FROM wechat_personal WHERE id = ?').get('default');
+    return rowWechatPersonal(row);
+  }
+
+  function saveWechatPersonal(input) {
+    const existing = getWechatPersonal();
+    const timestamp = nowIso();
+    const connection = {
+      status: String(input.status || existing.status || 'disconnected').trim(),
+      mode: String(input.mode || existing.mode || 'wcf_http').trim(),
+      sessionId: String(input.sessionId ?? existing.sessionId ?? '').trim(),
+      qrPayload: String(input.qrPayload ?? existing.qrPayload ?? '').trim(),
+      displayName: String(input.displayName ?? existing.displayName ?? '').trim(),
+      syncNote: String(input.syncNote ?? existing.syncNote ?? '').trim(),
+      lastSyncAt: String(input.lastSyncAt ?? existing.lastSyncAt ?? '').trim(),
+      lastSyncCount: Number(input.lastSyncCount ?? existing.lastSyncCount ?? 0),
+      createdAt: input.createdAt || timestamp,
+      updatedAt: timestamp
+    };
+
+    db.prepare(`
+      INSERT INTO wechat_personal (
+        id, status, mode, session_id, qr_payload, display_name, sync_note,
+        last_sync_at, last_sync_count, created_at, updated_at
+      )
+      VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status = excluded.status,
+        mode = excluded.mode,
+        session_id = excluded.session_id,
+        qr_payload = excluded.qr_payload,
+        display_name = excluded.display_name,
+        sync_note = excluded.sync_note,
+        last_sync_at = excluded.last_sync_at,
+        last_sync_count = excluded.last_sync_count,
+        updated_at = excluded.updated_at
+    `).run(
+      connection.status,
+      connection.mode,
+      connection.sessionId,
+      connection.qrPayload,
+      connection.displayName,
+      connection.syncNote,
+      connection.lastSyncAt,
+      connection.lastSyncCount,
+      connection.createdAt,
+      connection.updatedAt
+    );
+    return getWechatPersonal();
+  }
+
+  function startWechatPersonalLogin(input = {}) {
+    const sessionId = `wechat_session_${randomUUID()}`;
+    return saveWechatPersonal({
+      status: 'waiting_scan',
+      mode: input.mode || 'wcf_http',
+      sessionId,
+      qrPayload: `growth-agent://wechat-login/${sessionId}`,
+      syncNote: '等待官方 Windows 微信扫码登录或确认 WCF 桥接器'
+    });
+  }
+
+  function confirmWechatPersonalLogin(input = {}) {
+    return saveWechatPersonal({
+      status: 'connected',
+      displayName: String(input.displayName || '').trim() || '个人微信小号',
+      syncNote: '已确认连接；只同步转发目标，不自动发送消息'
+    });
+  }
+
+  function syncWechatTargets(input = {}) {
+    const labels = Array.isArray(input.labels) ? input.labels : [];
+    const created = createTargets({
+      labels,
+      kind: input.kind || 'group',
+      allowed: input.allowed !== false,
+      riskLevel: input.riskLevel || 'low',
+      note: input.note || '微信同步目标'
+    });
+    const connection = saveWechatPersonal({
+      status: getWechatPersonal().status === 'waiting_scan' ? 'connected' : getWechatPersonal().status,
+      lastSyncAt: nowIso(),
+      lastSyncCount: created.length,
+      syncNote: `同步 ${created.length} 个转发目标`
+    });
+    return { created, connection };
+  }
+
   function createDraft(input) {
     const draft = {
       id: input.id || `draft_${randomUUID()}`,
@@ -524,6 +654,7 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     const targets = listTargets();
     const drafts = listDrafts();
     return {
+      wechatPersonal: getWechatPersonal(),
       miniapps,
       campaigns,
       targets,
@@ -600,6 +731,10 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     createCampaignFromMiniapp,
     createTarget,
     createTargets,
+    startWechatPersonalLogin,
+    confirmWechatPersonalLogin,
+    syncWechatTargets,
+    getWechatPersonal,
     deleteTarget,
     createDraft,
     listCampaigns,

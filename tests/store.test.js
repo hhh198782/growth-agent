@@ -225,3 +225,31 @@ test('store migrates an existing miniapps table before indexing AppID', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('store tracks personal WeChat scan login and syncs group targets', () => {
+  const { store, cleanup } = withStore();
+  try {
+    const login = store.startWechatPersonalLogin({ mode: 'wcf_http' });
+    assert.equal(login.status, 'waiting_scan');
+    assert.equal(login.mode, 'wcf_http');
+    assert.match(login.qrPayload, /^growth-agent:\/\/wechat-login\//);
+
+    const connected = store.confirmWechatPersonalLogin({ displayName: '个人微信小号' });
+    assert.equal(connected.status, 'connected');
+    assert.equal(connected.displayName, '个人微信小号');
+
+    const synced = store.syncWechatTargets({
+      labels: ['A装修交流群', 'A材料交流群', 'A装修交流群'],
+      kind: 'group',
+      note: '微信扫码同步'
+    });
+    const state = store.getState();
+
+    assert.equal(synced.created.length, 2);
+    assert.equal(state.wechatPersonal.status, 'connected');
+    assert.equal(state.wechatPersonal.lastSyncCount, 2);
+    assert.equal(state.targets.some((target) => target.label === 'A材料交流群'), true);
+  } finally {
+    cleanup();
+  }
+});

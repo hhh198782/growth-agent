@@ -162,6 +162,25 @@ export function createApp({ store, staticDir, wechatClient = createWechatMiniapp
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/wechat-personal/login/start') {
+        const body = await readBody(req);
+        sendJson(res, 201, store.startWechatPersonalLogin(body));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/wechat-personal/login/confirm') {
+        const body = await readBody(req);
+        sendJson(res, 200, store.confirmWechatPersonalLogin(body));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/wechat-personal/sync-targets') {
+        const body = await readBody(req);
+        const labels = splitTargetLabels(body.labels);
+        sendJson(res, 201, store.syncWechatTargets({ ...body, labels }));
+        return;
+      }
+
       const miniappCampaignMatch = url.pathname.match(/^\/api\/miniapps\/([^/]+)\/campaign$/);
       if (req.method === 'POST' && miniappCampaignMatch) {
         const body = await readBody(req);
