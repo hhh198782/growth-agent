@@ -23,4 +23,6 @@ test('UI exposes personal WeChat scan login and group sync workflow', () => {
   assert.equal(html.includes('不自动群发'), true);
   assert.equal(script.includes('/api/wechat-personal/login/start'), true);
   assert.equal(script.includes('/api/wechat-personal/sync-targets'), true);
+  assert.equal(script.includes('growth-agent://wechat-login'), false);
+  assert.equal(script.includes('Array.from({ length: 121'), false);
 });

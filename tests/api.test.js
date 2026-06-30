@@ -248,7 +248,7 @@ test('API starts personal WeChat scan login and syncs group targets', async () =
 
     assert.equal(loginResult.response.status, 201);
     assert.equal(loginResult.body.status, 'waiting_scan');
-    assert.match(loginResult.body.qrPayload, /^growth-agent:\/\/wechat-login\//);
+    assert.equal(loginResult.body.qrPayload, '');
     assert.equal(confirmResult.response.status, 200);
     assert.equal(confirmResult.body.status, 'connected');
     assert.equal(syncResult.response.status, 201);

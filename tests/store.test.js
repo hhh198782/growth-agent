@@ -232,7 +232,7 @@ test('store tracks personal WeChat scan login and syncs group targets', () => {
     const login = store.startWechatPersonalLogin({ mode: 'wcf_http' });
     assert.equal(login.status, 'waiting_scan');
     assert.equal(login.mode, 'wcf_http');
-    assert.match(login.qrPayload, /^growth-agent:\/\/wechat-login\//);
+    assert.equal(login.qrPayload, '');
 
     const connected = store.confirmWechatPersonalLogin({ displayName: '个人微信小号' });
     assert.equal(connected.status, 'connected');

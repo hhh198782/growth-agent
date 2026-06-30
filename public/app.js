@@ -164,30 +164,40 @@ function renderMiniapps() {
     .join('');
 }
 
-function renderQr(payload = '') {
-  const qr = $('#wechatQr');
-  if (!payload) {
-    qr.innerHTML = '<span>Windows 微信扫码</span>';
-    qr.classList.add('empty-qr');
-    return;
-  }
-  qr.classList.remove('empty-qr');
-  let seed = 0;
-  for (const char of payload) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
-  const cells = Array.from({ length: 121 }, (_, index) => {
-    const edge = index < 11 || index > 109 || index % 11 === 0 || index % 11 === 10;
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    const filled = edge || (seed % 7) < 3;
-    return `<i class="${filled ? 'on' : ''}"></i>`;
-  });
-  qr.innerHTML = cells.join('');
+function renderLoginGuide(personal = {}) {
+  const guide = $('#wechatLoginGuide');
+  const status = personal.status || 'disconnected';
+  const copy = {
+    connected: {
+      title: 'WCF 连接已确认',
+      body: '可以同步微信群目标，仍然只生成草稿，不自动发送。'
+    },
+    waiting_scan: {
+      title: '等待官方 Windows 微信扫码',
+      body: '请在 Windows 微信客户端里完成真实扫码，再检测或确认 WCF 桥接器。'
+    },
+    disconnected: {
+      title: '先打开官方 Windows 微信',
+      body: '真实二维码只在微信客户端里显示；网页不会生成可扫描二维码。'
+    }
+  }[status] || {
+    title: '先打开官方 Windows 微信',
+    body: '真实二维码只在微信客户端里显示；网页不会生成可扫描二维码。'
+  };
+
+  guide.className = `login-guide ${status}`;
+  guide.innerHTML = `
+    <span class="guide-kicker">官方 Windows 微信</span>
+    <strong>${escapeHtml(copy.title)}</strong>
+    <span>${escapeHtml(copy.body)}</span>
+  `;
 }
 
 function renderWechatPersonal() {
   const personal = state.wechatPersonal || {};
   $('#wechatPersonalStatus').innerHTML = `${connectionBadge(personal.status)} ${escapeHtml(personal.displayName || '个人微信')}`;
   $('#wechatPersonalNote').textContent = personal.syncNote || '官方 Windows 微信扫码登录后，通过 WCF 同步微信群目标；不自动群发。';
-  renderQr(personal.qrPayload || '');
+  renderLoginGuide(personal);
 }
 
 function renderCampaigns() {
@@ -386,7 +396,7 @@ async function startWechatLogin() {
   state.wechatPersonal = connection;
   renderWechatPersonal();
   renderConnectionSummary();
-  toast('WCF 扫码连接流程已启动');
+  toast('请在官方 Windows 微信客户端完成扫码登录');
 }
 
 async function confirmWechatLogin() {

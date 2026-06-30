@@ -523,8 +523,8 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       status: 'waiting_scan',
       mode: input.mode || 'wcf_http',
       sessionId,
-      qrPayload: `growth-agent://wechat-login/${sessionId}`,
-      syncNote: '等待官方 Windows 微信扫码登录或确认 WCF 桥接器'
+      qrPayload: '',
+      syncNote: '请在官方 Windows 微信客户端完成扫码登录，然后检测 WeChatFerry/WCF 本机桥接器'
     });
   }
 
