@@ -6,55 +6,11 @@ const state = {
   metrics: {}
 };
 
-const MINIAPP_PRESETS = {
-  compress: {
-    appName: '图片压缩工具',
-    name: '图片压缩冷启动',
-    toolId: 'compress',
-    toolName: '图片压缩',
-    miniappPath: '/pages/compress/compress',
-    goal: '帮助用户在微信里快速压缩图片，减少上传失败',
-    dailyLimit: 20
-  },
-  qrcode: {
-    appName: '二维码工具',
-    name: '二维码工具推广',
-    toolId: 'qrcode',
-    toolName: '二维码生成',
-    miniappPath: '/pages/qrcode/qrcode',
-    goal: '帮助用户快速生成可保存、可转发的二维码',
-    dailyLimit: 20
-  },
-  wordcount: {
-    appName: '字数统计工具',
-    name: '字数统计推广',
-    toolId: 'wordcount',
-    toolName: '字数统计',
-    miniappPath: '/pages/wordcount/wordcount',
-    goal: '帮助写文案、发朋友圈、做报价说明时快速统计字数',
-    dailyLimit: 20
-  },
-  teleprompter: {
-    appName: '提词器工具',
-    name: '提词器推广',
-    toolId: 'teleprompter',
-    toolName: '提词器',
-    miniappPath: '/pages/teleprompter/teleprompter',
-    goal: '帮助拍短视频、做口播时照着稿子更顺畅',
-    dailyLimit: 15
-  },
-  grid9: {
-    appName: '九宫格切图工具',
-    name: '九宫格切图推广',
-    toolId: 'grid9',
-    toolName: '九宫格切图',
-    miniappPath: '/pages/grid9/grid9',
-    goal: '帮助朋友圈和社群发图时快速做九宫格效果',
-    dailyLimit: 15
-  }
-};
-
 const $ = (selector) => document.querySelector(selector);
+
+let authTimer = null;
+let authRequestId = 0;
+let lastSuccessfulAuthText = '';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -70,6 +26,16 @@ function toast(message) {
   el.textContent = message;
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+function humanError(error) {
+  const message = error?.message || 'REQUEST_FAILED';
+  return {
+    INVALID_WECHAT_CREDENTIALS: '没有识别到有效的 AppID 和 AppSecret',
+    WECHAT_ACCESS_TOKEN_MISSING: '微信没有返回 access_token',
+    WECHAT_HTTP_401: '微信接口拒绝访问，请检查 AppID/AppSecret',
+    WECHAT_HTTP_403: '微信接口权限不足，请检查小程序后台配置'
+  }[message] || message;
 }
 
 async function api(path, options = {}) {
@@ -132,6 +98,23 @@ function renderMetrics() {
     .join('');
 }
 
+function miniappStatusBadge(miniapp) {
+  const status = miniapp.syncStatus || miniapp.source || 'manual';
+  const className = status === 'connected' ? 'ok' : status === 'failed' ? 'danger' : '';
+  const label = {
+    connected: '已授权',
+    failed: '检测失败',
+    manual: '本地资料',
+    preset: '预设'
+  }[status] || status;
+  return `<span class="badge ${className}">${escapeHtml(label)}</span>`;
+}
+
+function sourceLabel(miniapp) {
+  if (miniapp.appId) return `AppID ${miniapp.appId}`;
+  return miniapp.source || '本地资料';
+}
+
 function renderMiniapps() {
   const select = $('#miniappSelect');
   select.innerHTML = [
@@ -142,7 +125,7 @@ function renderMiniapps() {
   ].join('');
 
   if (!state.miniapps.length) {
-    $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。先保存一个常用小程序。</div>';
+    $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。先粘贴 AppID/AppSecret 完成授权检测。</div>';
     return;
   }
 
@@ -153,9 +136,10 @@ function renderMiniapps() {
           <div>
             <p class="row-title">${escapeHtml(miniapp.appName)}</p>
             <p class="row-meta">${escapeHtml(miniapp.toolName)} · ${escapeHtml(miniapp.miniappPath)}</p>
-            <p class="row-meta">${escapeHtml(miniapp.goal || '没有填写推广目标')}</p>
+            <p class="row-meta">${escapeHtml(sourceLabel(miniapp))}</p>
+            <p class="row-meta">${escapeHtml(miniapp.syncMessage || miniapp.goal || '没有同步说明')}</p>
           </div>
-          <span class="badge">${escapeHtml(miniapp.source || 'manual')}</span>
+          ${miniappStatusBadge(miniapp)}
         </div>
         <div class="actions">
           <button class="small-button" data-action="apply-miniapp" data-id="${miniapp.id}" type="button">填入活动</button>
@@ -230,7 +214,7 @@ function statusBadge(status) {
     sent: '已发送',
     skipped: '已跳过'
   }[status] || status;
-  return `<span class="badge ${className}">${label}</span>`;
+  return `<span class="badge ${className}">${escapeHtml(label)}</span>`;
 }
 
 function renderDrafts() {
@@ -299,20 +283,68 @@ function fillCampaignFromMiniapp(miniapp) {
   toast(`已填入「${miniapp.appName}」`);
 }
 
-function applyMiniappPreset(presetId) {
-  const preset = MINIAPP_PRESETS[presetId];
-  const form = $('#miniappForm');
-  if (!preset || !form) return;
+function setAuthStatus(status, message) {
+  const el = $('#wechatAuthStatus');
+  el.className = `auth-status ${status}`;
+  el.textContent = message;
+}
 
-  setFormValues(form, {
-    appName: preset.appName,
-    toolId: preset.toolId,
-    toolName: preset.toolName,
-    miniappPath: preset.miniappPath,
-    goal: preset.goal,
-    dailyLimit: String(preset.dailyLimit)
-  });
-  toast(`已填入「${preset.toolName}」模板`);
+function looksLikeWechatAuth(value) {
+  return /\bwx[a-zA-Z0-9_-]{6,}\b/.test(value) && /[a-zA-Z0-9_-]{16,}/.test(value.replace(/\bwx[a-zA-Z0-9_-]{6,}\b/, ''));
+}
+
+async function connectWechatMiniapp({ auto = false } = {}) {
+  const form = $('#wechatConnectForm');
+  const authorizationText = form.elements.authorizationText.value.trim();
+  if (!authorizationText) {
+    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
+    return;
+  }
+  if (!looksLikeWechatAuth(authorizationText)) {
+    setAuthStatus(auto ? 'idle' : 'failed', auto ? '继续输入，系统会自动识别 AppID 和 AppSecret' : '没有识别到完整 AppID 和 AppSecret');
+    return;
+  }
+  if (auto && authorizationText === lastSuccessfulAuthText) {
+    return;
+  }
+
+  const requestId = ++authRequestId;
+  setAuthStatus('checking', '正在检测微信授权...');
+  try {
+    const miniapp = await api('/api/wechat-miniapps/connect', {
+      method: 'POST',
+      body: { authorizationText }
+    });
+    if (requestId !== authRequestId) return;
+    lastSuccessfulAuthText = authorizationText;
+    form.reset();
+    setAuthStatus('success', `授权成功，已导入「${miniapp.appName}」`);
+    toast('微信小程序授权检测成功');
+    await loadState();
+    $('#miniappSelect').value = miniapp.id;
+    fillCampaignFromMiniapp(miniapp);
+  } catch (error) {
+    if (requestId !== authRequestId) return;
+    setAuthStatus('failed', `检测失败：${humanError(error)}`);
+    if (!auto) toast(humanError(error));
+  }
+}
+
+function scheduleWechatConnect() {
+  const value = $('#wechatAuthorizationText').value.trim();
+  clearTimeout(authTimer);
+  if (!value) {
+    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
+    return;
+  }
+  if (!looksLikeWechatAuth(value)) {
+    setAuthStatus('idle', '继续输入，系统会自动识别 AppID 和 AppSecret');
+    return;
+  }
+  setAuthStatus('checking', '已识别授权信息，稍后自动检测...');
+  authTimer = setTimeout(() => {
+    connectWechatMiniapp({ auto: true });
+  }, 900);
 }
 
 async function createCampaignFromMiniapp(miniapp) {
@@ -342,25 +374,13 @@ async function copyText(text) {
   textarea.remove();
 }
 
-$('#miniappForm').addEventListener('submit', async (event) => {
+$('#wechatConnectForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = event.currentTarget;
-  const values = formData(form);
-  const miniapp = await api('/api/miniapps', {
-    method: 'POST',
-    body: {
-      ...values,
-      dailyLimit: Number(values.dailyLimit || 20),
-      source: 'manual'
-    }
-  });
-  form.reset();
-  form.elements.dailyLimit.value = '20';
-  toast('小程序资料已保存');
-  await loadState();
-  $('#miniappSelect').value = miniapp.id;
-  fillCampaignFromMiniapp(miniapp);
+  clearTimeout(authTimer);
+  await connectWechatMiniapp({ auto: false });
 });
+
+$('#wechatAuthorizationText').addEventListener('input', scheduleWechatConnect);
 
 $('#campaignForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -403,19 +423,15 @@ $('#targetForm').addEventListener('submit', async (event) => {
 });
 
 document.body.addEventListener('click', async (event) => {
-  const presetButton = event.target.closest('button[data-miniapp-preset]');
-  if (presetButton) {
-    applyMiniappPreset(presetButton.dataset.miniappPreset);
-    return;
-  }
-
   const button = event.target.closest('button[data-action]');
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
 
-  if (action === 'scan-login') {
-    toast('扫码导入需要微信官方接口；当前先用资料库切换');
+  if (action === 'clear-wechat-auth') {
+    clearTimeout(authTimer);
+    $('#wechatConnectForm').reset();
+    setAuthStatus('idle', '等待输入 AppID 和 AppSecret');
     return;
   }
 

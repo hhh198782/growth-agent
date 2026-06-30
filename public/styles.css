@@ -221,6 +221,35 @@ textarea:focus {
   font-size: 12px;
 }
 
+.auth-status {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 9px 10px;
+  overflow-wrap: anywhere;
+}
+
+.auth-status.checking {
+  background: #eef7ff;
+  border-color: #bddff7;
+  color: #15537d;
+}
+
+.auth-status.success {
+  background: #e7f6ec;
+  border-color: #bfe4c9;
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.auth-status.failed {
+  background: #fde8e6;
+  border-color: #f3b8b2;
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .quick-guide {
   background: #f1f7f6;
   border: 1px solid #cfe6e2;

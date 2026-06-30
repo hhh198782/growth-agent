@@ -8,10 +8,10 @@ import { tmpdir } from 'node:os';
 import { createApp } from '../server/app.js';
 import { createStore } from '../src/store/sqlite-store.js';
 
-async function withServer(testFn) {
+async function withServer(testFn, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'growth-agent-api-'));
   const store = createStore({ dbPath: join(dir, 'test.sqlite') });
-  const server = createServer(createApp({ store, staticDir: null }));
+  const server = createServer(createApp({ store, staticDir: null, wechatClient: options.wechatClient }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -175,4 +175,53 @@ test('API creates a miniapp profile and turns it into a campaign automatically',
       true
     );
   });
+});
+
+test('API connects an official WeChat miniapp and creates a campaign from the imported profile', async () => {
+  const wechatClient = {
+    async importMiniapp({ appId, appSecret }) {
+      assert.equal(appId, 'wx1234567890abcdef');
+      assert.equal(appSecret, 'secret-value');
+      return {
+        appId,
+        appName: '官方小程序',
+        toolId: 'official_app',
+        toolName: '官方小程序',
+        miniappPath: '/pages/index/index',
+        goal: '官方接口导入的小程序',
+        dailyLimit: 20,
+        syncStatus: 'connected',
+        syncMessage: '已通过微信官方接口导入'
+      };
+    }
+  };
+
+  await withServer(async ({ baseUrl, store }) => {
+    const connectResult = await jsonFetch(`${baseUrl}/api/wechat-miniapps/connect`, {
+      method: 'POST',
+      body: {
+        authorizationText: 'AppID: wx1234567890abcdef\nAppSecret: secret-value'
+      }
+    });
+    const campaignResult = await jsonFetch(`${baseUrl}/api/miniapps/${connectResult.body.id}/campaign`, {
+      method: 'POST',
+      body: { name: '官方小程序推广' }
+    });
+    const stateResult = await jsonFetch(`${baseUrl}/api/state`);
+
+    assert.equal(connectResult.response.status, 201);
+    assert.equal(connectResult.body.appId, 'wx1234567890abcdef');
+    assert.equal(connectResult.body.appSecret, undefined);
+    assert.equal(connectResult.body.source, 'wechat_official');
+    assert.equal(connectResult.body.syncStatus, 'connected');
+    assert.equal(store.getWechatCredential('wx1234567890abcdef').appSecret, 'secret-value');
+    assert.equal(campaignResult.response.status, 201);
+    assert.equal(campaignResult.body.name, '官方小程序推广');
+    assert.equal(campaignResult.body.toolId, 'official_app');
+    assert.equal(campaignResult.body.miniappPath, '/pages/index/index');
+    assert.equal(
+      stateResult.body.miniapps.some((item) => item.appId === 'wx1234567890abcdef' && item.appSecret === undefined),
+      true
+    );
+  }, { wechatClient });
 });

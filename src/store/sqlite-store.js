@@ -23,6 +23,7 @@ function rowCampaign(row) {
 function rowMiniapp(row) {
   return {
     id: row.id,
+    appId: row.app_id || '',
     appName: row.app_name,
     toolId: row.tool_id,
     toolName: row.tool_name,
@@ -30,6 +31,9 @@ function rowMiniapp(row) {
     goal: row.goal,
     dailyLimit: row.daily_limit,
     source: row.source,
+    syncStatus: row.sync_status || 'manual',
+    syncMessage: row.sync_message || '',
+    lastSyncAt: row.last_sync_at || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -86,6 +90,7 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
 
     CREATE TABLE IF NOT EXISTS miniapps (
       id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL DEFAULT '',
       app_name TEXT NOT NULL,
       tool_id TEXT NOT NULL,
       tool_name TEXT NOT NULL,
@@ -93,6 +98,17 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       goal TEXT NOT NULL DEFAULT '',
       daily_limit INTEGER NOT NULL DEFAULT 20,
       source TEXT NOT NULL DEFAULT 'manual',
+      sync_status TEXT NOT NULL DEFAULT 'manual',
+      sync_message TEXT NOT NULL DEFAULT '',
+      last_sync_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS wechat_credentials (
+      app_id TEXT PRIMARY KEY,
+      miniapp_id TEXT NOT NULL,
+      app_secret TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -120,6 +136,19 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       updated_at TEXT NOT NULL
     );
   `);
+
+  function addColumnIfMissing(table, column, definition) {
+    const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
+    if (!columns.has(column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+    }
+  }
+
+  addColumnIfMissing('miniapps', 'app_id', "app_id TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing('miniapps', 'sync_status', "sync_status TEXT NOT NULL DEFAULT 'manual'");
+  addColumnIfMissing('miniapps', 'sync_message', "sync_message TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing('miniapps', 'last_sync_at', "last_sync_at TEXT NOT NULL DEFAULT ''");
+  db.exec('CREATE INDEX IF NOT EXISTS idx_miniapps_app_id ON miniapps(app_id)');
 
   function createCampaign(input) {
     const campaign = {
@@ -155,6 +184,7 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     const createdAt = input.createdAt || nowIso();
     const miniapp = {
       id: input.id || `miniapp_${randomUUID()}`,
+      appId: String(input.appId || '').trim(),
       appName: String(input.appName || '').trim(),
       toolId: String(input.toolId || '').trim(),
       toolName: String(input.toolName || '').trim(),
@@ -162,6 +192,9 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       goal: String(input.goal || '').trim(),
       dailyLimit: Math.max(1, Math.min(200, Number(input.dailyLimit || 20))),
       source: String(input.source || 'manual').trim() || 'manual',
+      syncStatus: String(input.syncStatus || 'manual').trim() || 'manual',
+      syncMessage: String(input.syncMessage || '').trim(),
+      lastSyncAt: input.lastSyncAt || '',
       createdAt,
       updatedAt: input.updatedAt || createdAt
     };
@@ -169,10 +202,14 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       throw new Error('INVALID_MINIAPP');
     }
     db.prepare(`
-      INSERT INTO miniapps (id, app_name, tool_id, tool_name, miniapp_path, goal, daily_limit, source, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO miniapps (
+        id, app_id, app_name, tool_id, tool_name, miniapp_path, goal, daily_limit,
+        source, sync_status, sync_message, last_sync_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       miniapp.id,
+      miniapp.appId,
       miniapp.appName,
       miniapp.toolId,
       miniapp.toolName,
@@ -180,6 +217,9 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       miniapp.goal,
       miniapp.dailyLimit,
       miniapp.source,
+      miniapp.syncStatus,
+      miniapp.syncMessage,
+      miniapp.lastSyncAt,
       miniapp.createdAt,
       miniapp.updatedAt
     );
@@ -193,6 +233,132 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
   function getMiniapp(id) {
     const row = db.prepare('SELECT * FROM miniapps WHERE id = ?').get(id);
     return row ? rowMiniapp(row) : null;
+  }
+
+  function getMiniappByAppId(appId) {
+    const row = db.prepare('SELECT * FROM miniapps WHERE app_id = ?').get(appId);
+    return row ? rowMiniapp(row) : null;
+  }
+
+  function getWechatCredential(appId) {
+    const row = db.prepare('SELECT * FROM wechat_credentials WHERE app_id = ?').get(String(appId || '').trim());
+    if (!row) return null;
+    return {
+      appId: row.app_id,
+      miniappId: row.miniapp_id,
+      appSecret: row.app_secret,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  function saveWechatCredential({ appId, miniappId, appSecret }) {
+    const existing = getWechatCredential(appId);
+    const timestamp = nowIso();
+    db.prepare(`
+      INSERT INTO wechat_credentials (app_id, miniapp_id, app_secret, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(app_id) DO UPDATE SET
+        miniapp_id = excluded.miniapp_id,
+        app_secret = excluded.app_secret,
+        updated_at = excluded.updated_at
+    `).run(
+      appId,
+      miniappId,
+      appSecret,
+      existing?.createdAt || timestamp,
+      timestamp
+    );
+  }
+
+  function upsertWechatMiniapp(input) {
+    const appId = String(input.appId || '').trim();
+    const appSecret = String(input.appSecret || '').trim();
+    if (!appId || !appSecret) {
+      throw new Error('INVALID_WECHAT_CREDENTIALS');
+    }
+
+    const existing = getMiniappByAppId(appId);
+    const timestamp = nowIso();
+    const miniapp = {
+      id: existing?.id || input.id || `miniapp_${randomUUID()}`,
+      appId,
+      appName: String(input.appName || existing?.appName || '').trim(),
+      toolId: String(input.toolId || existing?.toolId || '').trim(),
+      toolName: String(input.toolName || existing?.toolName || '').trim(),
+      miniappPath: String(input.miniappPath || existing?.miniappPath || '').trim(),
+      goal: String(input.goal || existing?.goal || '').trim(),
+      dailyLimit: Math.max(1, Math.min(200, Number(input.dailyLimit || existing?.dailyLimit || 20))),
+      source: 'wechat_official',
+      syncStatus: String(input.syncStatus || 'connected').trim() || 'connected',
+      syncMessage: String(input.syncMessage || '').trim(),
+      lastSyncAt: input.lastSyncAt || timestamp,
+      createdAt: existing?.createdAt || input.createdAt || timestamp,
+      updatedAt: timestamp
+    };
+    if (!miniapp.appName || !miniapp.toolId || !miniapp.toolName || !miniapp.miniappPath) {
+      throw new Error('INVALID_MINIAPP');
+    }
+
+    if (existing) {
+      db.prepare(`
+        UPDATE miniapps
+        SET
+          app_id = ?,
+          app_name = ?,
+          tool_id = ?,
+          tool_name = ?,
+          miniapp_path = ?,
+          goal = ?,
+          daily_limit = ?,
+          source = ?,
+          sync_status = ?,
+          sync_message = ?,
+          last_sync_at = ?,
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        miniapp.appId,
+        miniapp.appName,
+        miniapp.toolId,
+        miniapp.toolName,
+        miniapp.miniappPath,
+        miniapp.goal,
+        miniapp.dailyLimit,
+        miniapp.source,
+        miniapp.syncStatus,
+        miniapp.syncMessage,
+        miniapp.lastSyncAt,
+        miniapp.updatedAt,
+        miniapp.id
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO miniapps (
+          id, app_id, app_name, tool_id, tool_name, miniapp_path, goal, daily_limit,
+          source, sync_status, sync_message, last_sync_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        miniapp.id,
+        miniapp.appId,
+        miniapp.appName,
+        miniapp.toolId,
+        miniapp.toolName,
+        miniapp.miniappPath,
+        miniapp.goal,
+        miniapp.dailyLimit,
+        miniapp.source,
+        miniapp.syncStatus,
+        miniapp.syncMessage,
+        miniapp.lastSyncAt,
+        miniapp.createdAt,
+        miniapp.updatedAt
+      );
+    }
+
+    saveWechatCredential({ appId, miniappId: miniapp.id, appSecret });
+    return getMiniapp(miniapp.id);
   }
 
   function createCampaignFromMiniapp(id, input = {}) {
@@ -427,6 +593,8 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     close: () => db.close(),
     createCampaign,
     createMiniapp,
+    upsertWechatMiniapp,
+    getWechatCredential,
     listMiniapps,
     getMiniapp,
     createCampaignFromMiniapp,

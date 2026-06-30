@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 
 import { createStore } from '../src/store/sqlite-store.js';
 
@@ -135,5 +136,92 @@ test('store saves miniapp profiles and creates campaigns from them', () => {
     assert.equal(state.miniapps.some((item) => item.id === miniapp.id), true);
   } finally {
     cleanup();
+  }
+});
+
+test('store upserts WeChat miniapp credentials without exposing app secrets', () => {
+  const { store, cleanup } = withStore();
+  try {
+    const miniapp = store.upsertWechatMiniapp({
+      appId: 'wx1234567890abcdef',
+      appSecret: 'secret-value',
+      appName: 'Official Tool',
+      toolId: 'official_tool',
+      toolName: 'Official Tool',
+      miniappPath: '/pages/index/index',
+      goal: 'Official goal',
+      dailyLimit: 18,
+      syncStatus: 'connected',
+      syncMessage: 'Imported from WeChat official API'
+    });
+    const state = store.getState();
+    const saved = state.miniapps.find((item) => item.id === miniapp.id);
+
+    assert.equal(miniapp.appId, 'wx1234567890abcdef');
+    assert.equal(miniapp.source, 'wechat_official');
+    assert.equal(miniapp.syncStatus, 'connected');
+    assert.equal(miniapp.appSecret, undefined);
+    assert.equal(saved.appSecret, undefined);
+    assert.equal(saved.appId, 'wx1234567890abcdef');
+    assert.equal(store.getWechatCredential('wx1234567890abcdef').appSecret, 'secret-value');
+
+    const updated = store.upsertWechatMiniapp({
+      appId: 'wx1234567890abcdef',
+      appSecret: 'secret-value-2',
+      appName: 'Official Tool Updated',
+      toolId: 'official_tool',
+      toolName: 'Official Tool Updated',
+      miniappPath: '/pages/home/home',
+      goal: 'Updated goal',
+      syncStatus: 'connected',
+      syncMessage: 'Rechecked'
+    });
+
+    assert.equal(updated.id, miniapp.id);
+    assert.equal(updated.appName, 'Official Tool Updated');
+    assert.equal(updated.miniappPath, '/pages/home/home');
+    assert.equal(store.getWechatCredential('wx1234567890abcdef').appSecret, 'secret-value-2');
+  } finally {
+    cleanup();
+  }
+});
+
+test('store migrates an existing miniapps table before indexing AppID', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'growth-agent-store-migration-'));
+  const dbPath = join(dir, 'test.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE miniapps (
+      id TEXT PRIMARY KEY,
+      app_name TEXT NOT NULL,
+      tool_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      miniapp_path TEXT NOT NULL,
+      goal TEXT NOT NULL DEFAULT '',
+      daily_limit INTEGER NOT NULL DEFAULT 20,
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  db.close();
+
+  const store = createStore({ dbPath });
+  try {
+    const miniapp = store.upsertWechatMiniapp({
+      appId: 'wxabcdef1234567890',
+      appSecret: 'secret-value',
+      appName: 'Migrated Tool',
+      toolId: 'migrated_tool',
+      toolName: 'Migrated Tool',
+      miniappPath: '/pages/index/index',
+      goal: 'Migrated goal'
+    });
+
+    assert.equal(miniapp.appId, 'wxabcdef1234567890');
+    assert.equal(store.getWechatCredential('wxabcdef1234567890').appSecret, 'secret-value');
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

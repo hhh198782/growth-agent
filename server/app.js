@@ -3,6 +3,10 @@ import { extname, join, resolve } from 'node:path';
 import { generateDraft } from '../src/domain/content-generator.js';
 import { canCreateDraft } from '../src/domain/frequency-policy.js';
 import { makeSourceCode } from '../src/domain/source-code.js';
+import {
+  createWechatMiniappClient,
+  parseWechatAuthorizationText
+} from '../src/integrations/wechat-miniapp-client.js';
 
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -128,7 +132,7 @@ function splitTargetLabels(value) {
     .filter(Boolean);
 }
 
-export function createApp({ store, staticDir }) {
+export function createApp({ store, staticDir, wechatClient = createWechatMiniappClient() }) {
   return async function app(req, res) {
     const url = new URL(req.url, 'http://localhost');
 
@@ -147,6 +151,14 @@ export function createApp({ store, staticDir }) {
       if (req.method === 'POST' && url.pathname === '/api/miniapps') {
         const body = await readBody(req);
         sendJson(res, 201, store.createMiniapp(body));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/wechat-miniapps/connect') {
+        const body = await readBody(req);
+        const credentials = parseWechatAuthorizationText(body);
+        const imported = await wechatClient.importMiniapp(credentials);
+        sendJson(res, 201, store.upsertWechatMiniapp({ ...imported, appSecret: credentials.appSecret }));
         return;
       }
 
@@ -212,7 +224,14 @@ export function createApp({ store, staticDir }) {
 
       serveStatic(req, res, staticDir);
     } catch (error) {
-      const status = ['INVALID_JSON', 'BODY_TOO_LARGE'].includes(error.message) ? 400 : 500;
+      const status = [
+        'INVALID_JSON',
+        'BODY_TOO_LARGE',
+        'INVALID_WECHAT_CREDENTIALS',
+        'WECHAT_ACCESS_TOKEN_MISSING'
+      ].includes(error.message)
+        ? 400
+        : 500;
       sendJson(res, status, { error: error.message || 'INTERNAL_ERROR' });
     }
   };
