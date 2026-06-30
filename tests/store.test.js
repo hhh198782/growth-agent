@@ -22,6 +22,7 @@ test('store initializes schema and seeds default operating data', () => {
   const { store, cleanup } = withStore();
   try {
     const state = store.getState();
+    assert.equal(state.miniapps.length >= 1, true);
     assert.equal(state.campaigns.length, 1);
     assert.equal(state.targets.length >= 2, true);
     assert.equal(state.metrics.totalTargets, state.targets.length);
@@ -103,6 +104,35 @@ test('store creates multiple targets and deletes a target with its drafts', () =
     assert.equal(deleted.id, created[0].id);
     assert.equal(state.targets.some((target) => target.id === created[0].id), false);
     assert.equal(state.drafts.some((item) => item.id === draft.id), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test('store saves miniapp profiles and creates campaigns from them', () => {
+  const { store, cleanup } = withStore();
+  try {
+    const miniapp = store.createMiniapp({
+      appName: 'Toolkit Box',
+      toolId: 'compress',
+      toolName: 'Image Compress',
+      miniappPath: '/pages/compress/compress',
+      goal: 'Compress images inside WeChat',
+      dailyLimit: 12
+    });
+    const campaign = store.createCampaignFromMiniapp(miniapp.id, {
+      name: 'Toolkit Box launch'
+    });
+    const state = store.getState();
+
+    assert.equal(miniapp.appName, 'Toolkit Box');
+    assert.equal(campaign.name, 'Toolkit Box launch');
+    assert.equal(campaign.toolId, 'compress');
+    assert.equal(campaign.toolName, 'Image Compress');
+    assert.equal(campaign.miniappPath, '/pages/compress/compress');
+    assert.equal(campaign.goal, 'Compress images inside WeChat');
+    assert.equal(campaign.dailyLimit, 12);
+    assert.equal(state.miniapps.some((item) => item.id === miniapp.id), true);
   } finally {
     cleanup();
   }

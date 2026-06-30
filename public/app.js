@@ -1,12 +1,14 @@
 const state = {
+  miniapps: [],
   campaigns: [],
   targets: [],
   drafts: [],
   metrics: {}
 };
 
-const TOOL_PRESETS = {
+const MINIAPP_PRESETS = {
   compress: {
+    appName: '图片压缩工具',
     name: '图片压缩冷启动',
     toolId: 'compress',
     toolName: '图片压缩',
@@ -15,6 +17,7 @@ const TOOL_PRESETS = {
     dailyLimit: 20
   },
   qrcode: {
+    appName: '二维码工具',
     name: '二维码工具推广',
     toolId: 'qrcode',
     toolName: '二维码生成',
@@ -23,6 +26,7 @@ const TOOL_PRESETS = {
     dailyLimit: 20
   },
   wordcount: {
+    appName: '字数统计工具',
     name: '字数统计推广',
     toolId: 'wordcount',
     toolName: '字数统计',
@@ -31,6 +35,7 @@ const TOOL_PRESETS = {
     dailyLimit: 20
   },
   teleprompter: {
+    appName: '提词器工具',
     name: '提词器推广',
     toolId: 'teleprompter',
     toolName: '提词器',
@@ -39,6 +44,7 @@ const TOOL_PRESETS = {
     dailyLimit: 15
   },
   grid9: {
+    appName: '九宫格切图工具',
     name: '九宫格切图推广',
     toolId: 'grid9',
     toolName: '九宫格切图',
@@ -96,7 +102,7 @@ function splitAListChunk(chunk) {
 
 function parseTargetLabels(value) {
   const seen = new Set();
-  const labels = String(value || '')
+  return String(value || '')
     .split(/[\r\n,，;；]+/g)
     .flatMap(splitAListChunk)
     .map((item) => item.replace(/\s+/g, ' ').trim())
@@ -107,7 +113,6 @@ function parseTargetLabels(value) {
       seen.add(key);
       return true;
     });
-  return labels;
 }
 
 function renderMetrics() {
@@ -123,6 +128,40 @@ function renderMetrics() {
         <strong>${value}</strong>
         <span>${label}</span>
       </div>
+    `)
+    .join('');
+}
+
+function renderMiniapps() {
+  const select = $('#miniappSelect');
+  select.innerHTML = [
+    '<option value="">选择一个小程序资料</option>',
+    ...state.miniapps.map((miniapp) => `
+      <option value="${escapeHtml(miniapp.id)}">${escapeHtml(miniapp.appName)} · ${escapeHtml(miniapp.toolName)}</option>
+    `)
+  ].join('');
+
+  if (!state.miniapps.length) {
+    $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。先保存一个常用小程序。</div>';
+    return;
+  }
+
+  $('#miniappList').innerHTML = state.miniapps
+    .map((miniapp) => `
+      <article class="row-card miniapp-card">
+        <div class="row-top">
+          <div>
+            <p class="row-title">${escapeHtml(miniapp.appName)}</p>
+            <p class="row-meta">${escapeHtml(miniapp.toolName)} · ${escapeHtml(miniapp.miniappPath)}</p>
+            <p class="row-meta">${escapeHtml(miniapp.goal || '没有填写推广目标')}</p>
+          </div>
+          <span class="badge">${escapeHtml(miniapp.source || 'manual')}</span>
+        </div>
+        <div class="actions">
+          <button class="small-button" data-action="apply-miniapp" data-id="${miniapp.id}" type="button">填入活动</button>
+          <button class="small-button" data-action="create-miniapp-campaign" data-id="${miniapp.id}" type="button">直接建活动</button>
+        </div>
+      </article>
     `)
     .join('');
 }
@@ -223,6 +262,7 @@ function renderDrafts() {
 
 function render() {
   renderMetrics();
+  renderMiniapps();
   renderCampaigns();
   renderTargets();
   renderDrafts();
@@ -232,18 +272,59 @@ function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
-function applyCampaignPreset(presetId) {
-  const preset = TOOL_PRESETS[presetId];
+function setFormValues(form, values) {
+  for (const [key, value] of Object.entries(values)) {
+    if (form.elements[key]) {
+      form.elements[key].value = value ?? '';
+    }
+  }
+}
+
+function selectedMiniapp() {
+  const id = $('#miniappSelect').value;
+  return state.miniapps.find((miniapp) => miniapp.id === id) || null;
+}
+
+function fillCampaignFromMiniapp(miniapp) {
   const form = $('#campaignForm');
+  setFormValues(form, {
+    name: `${miniapp.appName}推广`,
+    toolId: miniapp.toolId,
+    toolName: miniapp.toolName,
+    miniappPath: miniapp.miniappPath,
+    goal: miniapp.goal,
+    dailyLimit: String(miniapp.dailyLimit)
+  });
+  $('#miniappSelect').value = miniapp.id;
+  toast(`已填入「${miniapp.appName}」`);
+}
+
+function applyMiniappPreset(presetId) {
+  const preset = MINIAPP_PRESETS[presetId];
+  const form = $('#miniappForm');
   if (!preset || !form) return;
 
-  form.elements.name.value = preset.name;
-  form.elements.toolId.value = preset.toolId;
-  form.elements.toolName.value = preset.toolName;
-  form.elements.miniappPath.value = preset.miniappPath;
-  form.elements.goal.value = preset.goal;
-  form.elements.dailyLimit.value = String(preset.dailyLimit);
+  setFormValues(form, {
+    appName: preset.appName,
+    toolId: preset.toolId,
+    toolName: preset.toolName,
+    miniappPath: preset.miniappPath,
+    goal: preset.goal,
+    dailyLimit: String(preset.dailyLimit)
+  });
   toast(`已填入「${preset.toolName}」模板`);
+}
+
+async function createCampaignFromMiniapp(miniapp) {
+  const campaignForm = $('#campaignForm');
+  const values = formData(campaignForm);
+  const name = String(values.name || '').trim() || `${miniapp.appName}推广`;
+  await api(`/api/miniapps/${miniapp.id}/campaign`, {
+    method: 'POST',
+    body: { name }
+  });
+  toast(`已为「${miniapp.appName}」创建活动`);
+  await loadState();
 }
 
 async function copyText(text) {
@@ -261,6 +342,26 @@ async function copyText(text) {
   textarea.remove();
 }
 
+$('#miniappForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = formData(form);
+  const miniapp = await api('/api/miniapps', {
+    method: 'POST',
+    body: {
+      ...values,
+      dailyLimit: Number(values.dailyLimit || 20),
+      source: 'manual'
+    }
+  });
+  form.reset();
+  form.elements.dailyLimit.value = '20';
+  toast('小程序资料已保存');
+  await loadState();
+  $('#miniappSelect').value = miniapp.id;
+  fillCampaignFromMiniapp(miniapp);
+});
+
 $('#campaignForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -273,6 +374,7 @@ $('#campaignForm').addEventListener('submit', async (event) => {
     }
   });
   form.reset();
+  form.elements.dailyLimit.value = '20';
   toast('活动已创建');
   await loadState();
 });
@@ -301,9 +403,9 @@ $('#targetForm').addEventListener('submit', async (event) => {
 });
 
 document.body.addEventListener('click', async (event) => {
-  const presetButton = event.target.closest('button[data-preset]');
+  const presetButton = event.target.closest('button[data-miniapp-preset]');
   if (presetButton) {
-    applyCampaignPreset(presetButton.dataset.preset);
+    applyMiniappPreset(presetButton.dataset.miniappPreset);
     return;
   }
 
@@ -311,6 +413,45 @@ document.body.addEventListener('click', async (event) => {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+
+  if (action === 'scan-login') {
+    toast('扫码导入需要微信官方接口；当前先用资料库切换');
+    return;
+  }
+
+  if (action === 'apply-selected-miniapp') {
+    const miniapp = selectedMiniapp();
+    if (!miniapp) {
+      toast('先选择一个小程序资料');
+      return;
+    }
+    fillCampaignFromMiniapp(miniapp);
+    return;
+  }
+
+  if (action === 'create-selected-miniapp') {
+    const miniapp = selectedMiniapp();
+    if (!miniapp) {
+      toast('先选择一个小程序资料');
+      return;
+    }
+    await createCampaignFromMiniapp(miniapp);
+    return;
+  }
+
+  if (action === 'apply-miniapp') {
+    const miniapp = state.miniapps.find((item) => item.id === id);
+    if (!miniapp) return;
+    fillCampaignFromMiniapp(miniapp);
+    return;
+  }
+
+  if (action === 'create-miniapp-campaign') {
+    const miniapp = state.miniapps.find((item) => item.id === id);
+    if (!miniapp) return;
+    await createCampaignFromMiniapp(miniapp);
+    return;
+  }
 
   if (action === 'generate') {
     const result = await api('/api/drafts/generate', {

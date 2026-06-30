@@ -144,6 +144,19 @@ export function createApp({ store, staticDir }) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/miniapps') {
+        const body = await readBody(req);
+        sendJson(res, 201, store.createMiniapp(body));
+        return;
+      }
+
+      const miniappCampaignMatch = url.pathname.match(/^\/api\/miniapps\/([^/]+)\/campaign$/);
+      if (req.method === 'POST' && miniappCampaignMatch) {
+        const body = await readBody(req);
+        sendJson(res, 201, store.createCampaignFromMiniapp(miniappCampaignMatch[1], body));
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/targets') {
         const body = await readBody(req);
         sendJson(res, 201, store.createTarget(body));

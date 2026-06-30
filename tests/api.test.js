@@ -143,3 +143,36 @@ test('API splits pasted A-prefixed target list into separate targets', async () 
     );
   });
 });
+
+test('API creates a miniapp profile and turns it into a campaign automatically', async () => {
+  await withServer(async ({ baseUrl }) => {
+    const miniappResult = await jsonFetch(`${baseUrl}/api/miniapps`, {
+      method: 'POST',
+      body: {
+        appName: 'Toolkit Box',
+        toolId: 'grid9',
+        toolName: 'Nine Grid Maker',
+        miniappPath: '/pages/grid9/grid9',
+        goal: 'Make nine-grid images for social posting',
+        dailyLimit: 15
+      }
+    });
+    const campaignResult = await jsonFetch(`${baseUrl}/api/miniapps/${miniappResult.body.id}/campaign`, {
+      method: 'POST',
+      body: { name: 'Nine Grid launch' }
+    });
+    const stateResult = await jsonFetch(`${baseUrl}/api/state`);
+
+    assert.equal(miniappResult.response.status, 201);
+    assert.equal(campaignResult.response.status, 201);
+    assert.equal(campaignResult.body.name, 'Nine Grid launch');
+    assert.equal(campaignResult.body.toolId, 'grid9');
+    assert.equal(campaignResult.body.toolName, 'Nine Grid Maker');
+    assert.equal(campaignResult.body.miniappPath, '/pages/grid9/grid9');
+    assert.equal(campaignResult.body.dailyLimit, 15);
+    assert.equal(
+      stateResult.body.miniapps.some((item) => item.id === miniappResult.body.id),
+      true
+    );
+  });
+});

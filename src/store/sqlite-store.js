@@ -20,6 +20,21 @@ function rowCampaign(row) {
   };
 }
 
+function rowMiniapp(row) {
+  return {
+    id: row.id,
+    appName: row.app_name,
+    toolId: row.tool_id,
+    toolName: row.tool_name,
+    miniappPath: row.miniapp_path,
+    goal: row.goal,
+    dailyLimit: row.daily_limit,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function rowTarget(row) {
   return {
     id: row.id,
@@ -67,6 +82,19 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       goal TEXT NOT NULL DEFAULT '',
       daily_limit INTEGER NOT NULL DEFAULT 20,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS miniapps (
+      id TEXT PRIMARY KEY,
+      app_name TEXT NOT NULL,
+      tool_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      miniapp_path TEXT NOT NULL,
+      goal TEXT NOT NULL DEFAULT '',
+      daily_limit INTEGER NOT NULL DEFAULT 20,
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS targets (
@@ -121,6 +149,65 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       campaign.createdAt
     );
     return campaign;
+  }
+
+  function createMiniapp(input) {
+    const createdAt = input.createdAt || nowIso();
+    const miniapp = {
+      id: input.id || `miniapp_${randomUUID()}`,
+      appName: String(input.appName || '').trim(),
+      toolId: String(input.toolId || '').trim(),
+      toolName: String(input.toolName || '').trim(),
+      miniappPath: String(input.miniappPath || '').trim(),
+      goal: String(input.goal || '').trim(),
+      dailyLimit: Math.max(1, Math.min(200, Number(input.dailyLimit || 20))),
+      source: String(input.source || 'manual').trim() || 'manual',
+      createdAt,
+      updatedAt: input.updatedAt || createdAt
+    };
+    if (!miniapp.appName || !miniapp.toolId || !miniapp.toolName || !miniapp.miniappPath) {
+      throw new Error('INVALID_MINIAPP');
+    }
+    db.prepare(`
+      INSERT INTO miniapps (id, app_name, tool_id, tool_name, miniapp_path, goal, daily_limit, source, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      miniapp.id,
+      miniapp.appName,
+      miniapp.toolId,
+      miniapp.toolName,
+      miniapp.miniappPath,
+      miniapp.goal,
+      miniapp.dailyLimit,
+      miniapp.source,
+      miniapp.createdAt,
+      miniapp.updatedAt
+    );
+    return miniapp;
+  }
+
+  function listMiniapps() {
+    return db.prepare('SELECT * FROM miniapps ORDER BY created_at DESC').all().map(rowMiniapp);
+  }
+
+  function getMiniapp(id) {
+    const row = db.prepare('SELECT * FROM miniapps WHERE id = ?').get(id);
+    return row ? rowMiniapp(row) : null;
+  }
+
+  function createCampaignFromMiniapp(id, input = {}) {
+    const miniapp = getMiniapp(id);
+    if (!miniapp) {
+      throw new Error('MINIAPP_NOT_FOUND');
+    }
+    return createCampaign({
+      name: String(input.name || '').trim() || `${miniapp.appName} launch`,
+      toolId: miniapp.toolId,
+      toolName: miniapp.toolName,
+      miniappPath: miniapp.miniappPath,
+      goal: input.goal === undefined ? miniapp.goal : input.goal,
+      dailyLimit: input.dailyLimit === undefined ? miniapp.dailyLimit : input.dailyLimit
+    });
   }
 
   function createTarget(input) {
@@ -266,10 +353,12 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
   }
 
   function getState() {
+    const miniapps = listMiniapps();
     const campaigns = listCampaigns();
     const targets = listTargets();
     const drafts = listDrafts();
     return {
+      miniapps,
       campaigns,
       targets,
       drafts,
@@ -284,6 +373,20 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
   }
 
   function seedDefaults() {
+    const miniappCount = db.prepare('SELECT COUNT(*) AS count FROM miniapps').get().count;
+    if (miniappCount === 0) {
+      createMiniapp({
+        id: 'miniapp_default_compress',
+        appName: '图片压缩工具',
+        toolId: 'compress',
+        toolName: '图片压缩',
+        miniappPath: '/pages/compress/compress',
+        goal: '帮助用户在微信里快速压缩图片，减少上传失败',
+        dailyLimit: 20,
+        source: 'preset'
+      });
+    }
+
     const campaignCount = db.prepare('SELECT COUNT(*) AS count FROM campaigns').get().count;
     if (campaignCount === 0) {
       createCampaign({
@@ -323,6 +426,10 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
   return {
     close: () => db.close(),
     createCampaign,
+    createMiniapp,
+    listMiniapps,
+    getMiniapp,
+    createCampaignFromMiniapp,
     createTarget,
     createTargets,
     deleteTarget,

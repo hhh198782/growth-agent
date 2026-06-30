@@ -21,19 +21,89 @@
           <section class="panel">
             <div class="section-head">
               <div>
-                <h2>新建活动</h2>
-                <p>不会填就先点一个模板，再按需要改。</p>
+                <h2>小程序自动化</h2>
+                <p>先保存小程序资料，再一键生成活动。</p>
+              </div>
+            </div>
+
+            <div class="scan-card">
+              <div class="scan-mark" aria-hidden="true"></div>
+              <div>
+                <p class="row-title">扫码登录导入</p>
+                <p class="row-meta">预留给微信官方授权接口；当前先用资料库稳定切换。</p>
+              </div>
+              <button class="small-button" data-action="scan-login" type="button">查看</button>
+            </div>
+
+            <div class="stack compact-stack">
+              <label>
+                选择小程序
+                <select id="miniappSelect"></select>
+              </label>
+              <div class="button-row">
+                <button class="small-button" data-action="apply-selected-miniapp" type="button">填入活动</button>
+                <button class="small-button" data-action="create-selected-miniapp" type="button">直接建活动</button>
+              </div>
+            </div>
+
+            <div class="miniapp-list" id="miniappList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <h2>添加小程序</h2>
+                <p>换小程序时先加到资料库。</p>
               </div>
             </div>
 
             <div class="quick-guide">
               <p class="guide-title">常用工具模板</p>
               <div class="preset-grid">
-                <button class="small-button" data-preset="compress" type="button">图片压缩</button>
-                <button class="small-button" data-preset="qrcode" type="button">二维码</button>
-                <button class="small-button" data-preset="wordcount" type="button">字数统计</button>
-                <button class="small-button" data-preset="teleprompter" type="button">提词器</button>
-                <button class="small-button" data-preset="grid9" type="button">九宫格</button>
+                <button class="small-button" data-miniapp-preset="compress" type="button">图片压缩</button>
+                <button class="small-button" data-miniapp-preset="qrcode" type="button">二维码</button>
+                <button class="small-button" data-miniapp-preset="wordcount" type="button">字数统计</button>
+                <button class="small-button" data-miniapp-preset="teleprompter" type="button">提词器</button>
+                <button class="small-button" data-miniapp-preset="grid9" type="button">九宫格</button>
+              </div>
+            </div>
+
+            <form id="miniappForm" class="stack">
+              <label>
+                小程序名称
+                <input name="appName" required placeholder="图片压缩工具">
+              </label>
+              <label>
+                工具 ID
+                <input name="toolId" required placeholder="compress">
+                <span class="field-help">英文小写，用来生成来源码，例如 <code>compress</code>。</span>
+              </label>
+              <label>
+                工具名
+                <input name="toolName" required placeholder="图片压缩">
+              </label>
+              <label>
+                小程序路径
+                <input name="miniappPath" required placeholder="/pages/compress/compress">
+                <span class="field-help">通常从 <code>/pages/</code> 开始，不要填网页链接。</span>
+              </label>
+              <label>
+                推广目标
+                <textarea name="goal" rows="3" placeholder="帮助用户在微信里快速压缩图片"></textarea>
+              </label>
+              <label>
+                每日上限
+                <input name="dailyLimit" type="number" min="1" max="200" value="20">
+              </label>
+              <button class="primary-button" type="submit">保存到资料库</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <h2>新建活动</h2>
+                <p>从小程序资料自动填入后再按需要改。</p>
               </div>
             </div>
 
@@ -46,27 +116,22 @@
               <label>
                 工具 ID
                 <input name="toolId" required placeholder="compress">
-                <span class="field-help">英文小写，用来生成来源码。建议用模板自动填，例如 <code>compress</code>。</span>
               </label>
               <label>
                 工具名
                 <input name="toolName" required placeholder="图片压缩">
-                <span class="field-help">用户看得懂的工具名称，会出现在草稿文案里。</span>
               </label>
               <label>
                 小程序路径
                 <input name="miniappPath" required placeholder="/pages/compress/compress">
-                <span class="field-help">必须是小程序页面路径，通常以 <code>/pages/</code> 开头；不要填网页链接。</span>
               </label>
               <label>
                 推广目标
                 <textarea name="goal" rows="3" placeholder="帮助用户在微信里快速压缩图片"></textarea>
-                <span class="field-help">一句话说明这个工具解决什么问题，会被写进草稿。</span>
               </label>
               <label>
                 每日上限
                 <input name="dailyLimit" type="number" min="1" max="200" value="20">
-                <span class="field-help">控制每天最多给多少个白名单目标生成草稿，先从 10-20 比较稳。</span>
               </label>
               <button class="primary-button" type="submit">创建活动</button>
             </form>
@@ -81,7 +146,7 @@
                   name="labels"
                   rows="7"
                   required
-                  placeholder="每行一个，例如：&#10;A青岛装修合作共赢群9&#10;A南京工程装修资源整合群6&#10;A深圳装修设计交流群"
+                  placeholder="每行一个，例如：&#10;A青岛装修合作共赢群&#10;A南京工程装修资源整合群&#10;A深圳装修设计交流群"
                 ></textarea>
               </label>
               <p class="helper-text">支持一行一个，也支持用逗号、分号分隔。粘贴很长的 A 开头群列表时，会尝试自动拆开。</p>

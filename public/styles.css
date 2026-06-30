@@ -115,6 +115,10 @@ button {
   gap: 10px;
 }
 
+.compact-stack {
+  margin: 12px 0;
+}
+
 label {
   display: grid;
   gap: 5px;
@@ -240,6 +244,44 @@ textarea:focus {
 
 .preset-grid .small-button {
   text-align: center;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scan-card {
+  align-items: center;
+  background: #f7fbfa;
+  border: 1px solid #cfe6e2;
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 42px 1fr auto;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+
+.scan-mark {
+  aspect-ratio: 1;
+  background:
+    linear-gradient(90deg, var(--accent) 0 18%, transparent 18% 82%, var(--accent) 82% 100%) top left / 100% 18% no-repeat,
+    linear-gradient(90deg, var(--accent) 0 18%, transparent 18% 82%, var(--accent) 82% 100%) bottom left / 100% 18% no-repeat,
+    linear-gradient(0deg, var(--accent) 0 18%, transparent 18% 82%, var(--accent) 82% 100%) top left / 18% 100% no-repeat,
+    linear-gradient(0deg, var(--accent) 0 18%, transparent 18% 82%, var(--accent) 82% 100%) top right / 18% 100% no-repeat;
+  border-radius: 5px;
+}
+
+.miniapp-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.miniapp-card {
+  background: #fff;
 }
 
 .metrics {
@@ -399,5 +441,14 @@ textarea:focus {
   .workspace,
   .metrics {
     grid-template-columns: 1fr;
+  }
+
+  .scan-card,
+  .button-row {
+    grid-template-columns: 1fr;
+  }
+
+  .scan-mark {
+    width: 42px;
   }
 }
