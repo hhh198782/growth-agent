@@ -281,6 +281,10 @@ textarea:focus {
   gap: 8px;
 }
 
+.button-row.single {
+  grid-template-columns: 1fr;
+}
+
 .scan-card {
   align-items: center;
   background: #f7fbfa;

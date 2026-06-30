@@ -22,7 +22,7 @@
             <div class="section-head">
               <div>
                 <h2>微信小程序接入</h2>
-                <p>粘贴 AppID 和 AppSecret，系统会自动检测授权并导入资料。</p>
+                <p>粘贴 AppID 和 AppSecret，系统会自动检测授权、导入资料并创建活动。</p>
               </div>
             </div>
 
@@ -41,7 +41,7 @@
               </label>
               <div class="auth-status idle" id="wechatAuthStatus">等待输入 AppID 和 AppSecret</div>
               <div class="button-row">
-                <button class="primary-button" type="submit">检测并导入</button>
+                <button class="primary-button" type="submit">检测并创建活动</button>
                 <button class="small-button" data-action="clear-wechat-auth" type="button">清空</button>
               </div>
             </form>
@@ -51,51 +51,12 @@
                 选择小程序
                 <select id="miniappSelect"></select>
               </label>
-              <div class="button-row">
-                <button class="small-button" data-action="apply-selected-miniapp" type="button">填入活动</button>
-                <button class="small-button" data-action="create-selected-miniapp" type="button">直接建活动</button>
+              <div class="button-row single">
+                <button class="primary-button" data-action="create-selected-miniapp" type="button">创建活动</button>
               </div>
             </div>
 
             <div class="miniapp-list" id="miniappList"></div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>新建活动</h2>
-                <p>先通过小程序资料自动填入，再按需要修改。</p>
-              </div>
-            </div>
-
-            <form id="campaignForm" class="stack">
-              <label>
-                活动名
-                <input name="name" required placeholder="图片压缩冷启动">
-                <span class="field-help">给你自己看的推广计划名称，例如“装修群图片压缩推广”。</span>
-              </label>
-              <label>
-                工具 ID
-                <input name="toolId" required placeholder="compress">
-              </label>
-              <label>
-                工具名
-                <input name="toolName" required placeholder="图片压缩">
-              </label>
-              <label>
-                小程序路径
-                <input name="miniappPath" required placeholder="/pages/index/index">
-              </label>
-              <label>
-                推广目标
-                <textarea name="goal" rows="3" placeholder="帮助用户在微信里快速完成一个具体任务"></textarea>
-              </label>
-              <label>
-                每日上限
-                <input name="dailyLimit" type="number" min="1" max="200" value="20">
-              </label>
-              <button class="primary-button" type="submit">创建活动</button>
-            </form>
           </section>
 
           <section class="panel">

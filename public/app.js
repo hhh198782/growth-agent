@@ -142,8 +142,7 @@ function renderMiniapps() {
           ${miniappStatusBadge(miniapp)}
         </div>
         <div class="actions">
-          <button class="small-button" data-action="apply-miniapp" data-id="${miniapp.id}" type="button">填入活动</button>
-          <button class="small-button" data-action="create-miniapp-campaign" data-id="${miniapp.id}" type="button">直接建活动</button>
+          <button class="small-button" data-action="create-miniapp-campaign" data-id="${miniapp.id}" type="button">创建活动</button>
         </div>
       </article>
     `)
@@ -152,7 +151,7 @@ function renderMiniapps() {
 
 function renderCampaigns() {
   if (!state.campaigns.length) {
-    $('#campaignList').innerHTML = '<div class="empty">还没有活动。</div>';
+    $('#campaignList').innerHTML = '<div class="empty">还没有活动。先接入小程序，系统会自动创建。</div>';
     return;
   }
 
@@ -256,31 +255,9 @@ function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
-function setFormValues(form, values) {
-  for (const [key, value] of Object.entries(values)) {
-    if (form.elements[key]) {
-      form.elements[key].value = value ?? '';
-    }
-  }
-}
-
 function selectedMiniapp() {
   const id = $('#miniappSelect').value;
   return state.miniapps.find((miniapp) => miniapp.id === id) || null;
-}
-
-function fillCampaignFromMiniapp(miniapp) {
-  const form = $('#campaignForm');
-  setFormValues(form, {
-    name: `${miniapp.appName}推广`,
-    toolId: miniapp.toolId,
-    toolName: miniapp.toolName,
-    miniappPath: miniapp.miniappPath,
-    goal: miniapp.goal,
-    dailyLimit: String(miniapp.dailyLimit)
-  });
-  $('#miniappSelect').value = miniapp.id;
-  toast(`已填入「${miniapp.appName}」`);
 }
 
 function setAuthStatus(status, message) {
@@ -291,6 +268,18 @@ function setAuthStatus(status, message) {
 
 function looksLikeWechatAuth(value) {
   return /\bwx[a-zA-Z0-9_-]{6,}\b/.test(value) && /[a-zA-Z0-9_-]{16,}/.test(value.replace(/\bwx[a-zA-Z0-9_-]{6,}\b/, ''));
+}
+
+async function createCampaignFromMiniapp(miniapp, { silent = false } = {}) {
+  const campaign = await api(`/api/miniapps/${miniapp.id}/campaign`, {
+    method: 'POST',
+    body: { name: `${miniapp.appName}推广` }
+  });
+  await loadState();
+  const select = $('#miniappSelect');
+  if (select) select.value = miniapp.id;
+  if (!silent) toast(`已创建「${campaign.name}」`);
+  return campaign;
 }
 
 async function connectWechatMiniapp({ auto = false } = {}) {
@@ -318,11 +307,10 @@ async function connectWechatMiniapp({ auto = false } = {}) {
     if (requestId !== authRequestId) return;
     lastSuccessfulAuthText = authorizationText;
     form.reset();
-    setAuthStatus('success', `授权成功，已导入「${miniapp.appName}」`);
-    toast('微信小程序授权检测成功');
-    await loadState();
-    $('#miniappSelect').value = miniapp.id;
-    fillCampaignFromMiniapp(miniapp);
+    const campaign = await createCampaignFromMiniapp(miniapp, { silent: true });
+    if (requestId !== authRequestId) return;
+    setAuthStatus('success', `授权成功，已创建「${campaign.name}」`);
+    toast('微信小程序授权成功，活动已创建');
   } catch (error) {
     if (requestId !== authRequestId) return;
     setAuthStatus('failed', `检测失败：${humanError(error)}`);
@@ -347,18 +335,6 @@ function scheduleWechatConnect() {
   }, 900);
 }
 
-async function createCampaignFromMiniapp(miniapp) {
-  const campaignForm = $('#campaignForm');
-  const values = formData(campaignForm);
-  const name = String(values.name || '').trim() || `${miniapp.appName}推广`;
-  await api(`/api/miniapps/${miniapp.id}/campaign`, {
-    method: 'POST',
-    body: { name }
-  });
-  toast(`已为「${miniapp.appName}」创建活动`);
-  await loadState();
-}
-
 async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -381,23 +357,6 @@ $('#wechatConnectForm').addEventListener('submit', async (event) => {
 });
 
 $('#wechatAuthorizationText').addEventListener('input', scheduleWechatConnect);
-
-$('#campaignForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = formData(form);
-  await api('/api/campaigns', {
-    method: 'POST',
-    body: {
-      ...values,
-      dailyLimit: Number(values.dailyLimit || 20)
-    }
-  });
-  form.reset();
-  form.elements.dailyLimit.value = '20';
-  toast('活动已创建');
-  await loadState();
-});
 
 $('#targetForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -435,16 +394,6 @@ document.body.addEventListener('click', async (event) => {
     return;
   }
 
-  if (action === 'apply-selected-miniapp') {
-    const miniapp = selectedMiniapp();
-    if (!miniapp) {
-      toast('先选择一个小程序资料');
-      return;
-    }
-    fillCampaignFromMiniapp(miniapp);
-    return;
-  }
-
   if (action === 'create-selected-miniapp') {
     const miniapp = selectedMiniapp();
     if (!miniapp) {
@@ -452,13 +401,6 @@ document.body.addEventListener('click', async (event) => {
       return;
     }
     await createCampaignFromMiniapp(miniapp);
-    return;
-  }
-
-  if (action === 'apply-miniapp') {
-    const miniapp = state.miniapps.find((item) => item.id === id);
-    if (!miniapp) return;
-    fillCampaignFromMiniapp(miniapp);
     return;
   }
 
