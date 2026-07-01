@@ -300,3 +300,26 @@ test('store syncs WeChat conversations, messages, and AI reply drafts', () => {
     cleanup();
   }
 });
+
+test('store saves AI settings and redacts API key by default', () => {
+  const { store, cleanup } = withStore();
+  try {
+    const saved = store.saveAiSettings({
+      provider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/',
+      model: 'deepseek-v4-flash',
+      apiKey: 'sk-test-deepseek'
+    });
+    const publicSettings = store.getAiSettings();
+    const secretSettings = store.getAiSettings({ includeSecret: true });
+
+    assert.equal(saved.provider, 'deepseek');
+    assert.equal(saved.baseUrl, 'https://api.deepseek.com');
+    assert.equal(saved.apiKeyConfigured, true);
+    assert.equal(saved.apiKey, undefined);
+    assert.equal(publicSettings.apiKey, undefined);
+    assert.equal(secretSettings.apiKey, 'sk-test-deepseek');
+  } finally {
+    cleanup();
+  }
+});

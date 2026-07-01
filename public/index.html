@@ -57,6 +57,44 @@
 
               <div class="connector-block">
                 <div class="connector-title">
+                  <span>DeepSeek 模型配置</span>
+                  <span class="badge">AI 回复</span>
+                </div>
+                <form id="aiSettingsForm" class="stack">
+                  <label>
+                    API Base URL
+                    <input
+                      name="baseUrl"
+                      id="aiBaseUrl"
+                      value="https://api.deepseek.com"
+                      autocomplete="off"
+                    >
+                  </label>
+                  <label>
+                    模型
+                    <select name="model" id="aiModel">
+                      <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                      <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+                      <option value="deepseek-chat">deepseek-chat</option>
+                    </select>
+                  </label>
+                  <label>
+                    API Key
+                    <input
+                      name="apiKey"
+                      id="aiApiKey"
+                      type="password"
+                      placeholder="sk-...，只保存在本机 SQLite"
+                      autocomplete="off"
+                    >
+                  </label>
+                  <div class="auth-status idle" id="aiSettingsStatus">未配置 DeepSeek API Key 时会使用本地模板。</div>
+                  <button class="primary-button" type="submit">保存 DeepSeek 配置</button>
+                </form>
+              </div>
+
+              <div class="connector-block">
+                <div class="connector-title">
                   <span>个人微信连接</span>
                   <span class="badge warn">WeChatFerry / WCF</span>
                 </div>

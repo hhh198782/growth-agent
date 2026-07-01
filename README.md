@@ -92,12 +92,20 @@ $env:WCF_MESSAGES_PATH="/api/messages"
 - 选择推广活动后生成 AI 回复草稿，并自动带上小程序路径和 source 来源码。
 - 复制草稿到 Windows 微信里人工确认发送。
 
-大模型默认使用本地模板；如果要接 OpenAI 兼容接口，配置：
+大模型默认使用本地模板；如果要接 DeepSeek，可以直接在页面左侧“DeepSeek 模型配置”里填：
+
+- API Base URL：`https://api.deepseek.com`
+- 模型：`deepseek-v4-flash`，需要更强推理时可改 `deepseek-v4-pro`
+- API Key：DeepSeek 控制台生成的 `sk-...`
+
+API Key 只保存在本机 SQLite，不会显示回页面、不会上传 GitHub。
+
+也可以用环境变量配置：
 
 ```powershell
-$env:AI_API_BASE_URL="https://api.openai.com/v1"
-$env:AI_API_KEY="你的 API Key"
-$env:AI_MODEL="gpt-4o-mini"
+$env:AI_API_BASE_URL="https://api.deepseek.com"
+$env:AI_API_KEY="你的 DeepSeek API Key"
+$env:AI_MODEL="deepseek-v4-flash"
 ```
 
 这个系统没有自动发送微信消息的接口。AI 只生成建议文本，避免误发、刷屏和账号风险。

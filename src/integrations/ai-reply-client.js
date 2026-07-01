@@ -22,8 +22,8 @@ function fallbackReply({ conversation, campaign, sourcePath, userPrompt }) {
 export function createAiReplyClient({
   fetchImpl = fetch,
   apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || '',
-  baseUrl = process.env.AI_API_BASE_URL || 'https://api.openai.com/v1',
-  model = process.env.AI_MODEL || 'gpt-4o-mini'
+  baseUrl = process.env.AI_API_BASE_URL || 'https://api.deepseek.com',
+  model = process.env.AI_MODEL || 'deepseek-v4-flash'
 } = {}) {
   const normalizedBaseUrl = String(baseUrl || '').replace(/\/+$/, '');
 
@@ -32,7 +32,12 @@ export function createAiReplyClient({
 
     async generateReply(input = {}) {
       const { conversation, campaign, messages = [], sourcePath, userPrompt } = input;
-      if (!apiKey || !normalizedBaseUrl) {
+      const runtimeConfig = input.aiConfig || {};
+      const runtimeApiKey = runtimeConfig.apiKey || apiKey;
+      const runtimeBaseUrl = String(runtimeConfig.baseUrl || normalizedBaseUrl || '').replace(/\/+$/, '');
+      const runtimeModel = runtimeConfig.model || model;
+
+      if (!runtimeApiKey || !runtimeBaseUrl) {
         return {
           body: fallbackReply({ conversation, campaign, sourcePath, userPrompt }),
           provider: 'local-template',
@@ -56,15 +61,15 @@ export function createAiReplyClient({
         userPrompt ? `额外要求：${userPrompt}` : ''
       ].join('\n');
 
-      const response = await fetchImpl(`${normalizedBaseUrl}/chat/completions`, {
+      const response = await fetchImpl(`${runtimeBaseUrl}/chat/completions`, {
         method: 'POST',
         signal: AbortSignal.timeout(20_000),
         headers: {
-          authorization: `Bearer ${apiKey}`,
+          authorization: `Bearer ${runtimeApiKey}`,
           'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model,
+          model: runtimeModel,
           temperature: 0.5,
           messages: [
             { role: 'system', content: '你只生成微信回复草稿，不能要求自动发送。' },
@@ -82,7 +87,7 @@ export function createAiReplyClient({
       }
       return {
         body,
-        provider: model,
+        provider: runtimeModel,
         safetyNote: '大模型只生成回复草稿，发送前需要人工确认。'
       };
     }

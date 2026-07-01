@@ -65,7 +65,8 @@ function statusForError(error) {
     'BODY_TOO_LARGE',
     'INVALID_WECHAT_CREDENTIALS',
     'WECHAT_ACCESS_TOKEN_MISSING',
-    'INVALID_AI_REPLY'
+    'INVALID_AI_REPLY',
+    'INVALID_AI_SETTINGS'
   ].includes(error.message)) {
     return 400;
   }
@@ -165,6 +166,17 @@ export function createApp({
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/ai/settings') {
+        sendJson(res, 200, store.getAiSettings());
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/ai/settings') {
+        const body = await readBody(req);
+        sendJson(res, 200, store.saveAiSettings(body));
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/campaigns') {
         const body = await readBody(req);
         sendJson(res, 201, store.createCampaign(body));
@@ -256,7 +268,8 @@ export function createApp({
           campaign,
           messages,
           sourcePath,
-          userPrompt: body.prompt
+          userPrompt: body.prompt,
+          aiConfig: store.getAiSettings({ includeSecret: true })
         });
         sendJson(res, 201, store.createAiReplyDraft({
           conversationId: conversation.id,

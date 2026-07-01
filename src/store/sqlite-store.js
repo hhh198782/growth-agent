@@ -142,6 +142,25 @@ function rowAiReplyDraft(row) {
   };
 }
 
+function rowAiSettings(row, { includeSecret = false } = {}) {
+  const settings = {
+    provider: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+    apiKeyConfigured: false,
+    updatedAt: ''
+  };
+  if (!row) return settings;
+  return {
+    provider: row.provider || settings.provider,
+    baseUrl: row.base_url || settings.baseUrl,
+    model: row.model || settings.model,
+    apiKeyConfigured: Boolean(row.api_key),
+    apiKey: includeSecret ? row.api_key : undefined,
+    updatedAt: row.updated_at || ''
+  };
+}
+
 function normalizeTargetLabel(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -245,6 +264,16 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       source_path TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'suggested' CHECK (status IN ('suggested', 'copied', 'discarded')),
       safety_note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL DEFAULT 'deepseek',
+      base_url TEXT NOT NULL DEFAULT 'https://api.deepseek.com',
+      model TEXT NOT NULL DEFAULT 'deepseek-v4-flash',
+      api_key TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -903,6 +932,42 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     return draft;
   }
 
+  function getAiSettings(options = {}) {
+    const row = db.prepare('SELECT * FROM ai_settings WHERE id = ?').get('default');
+    return rowAiSettings(row, options);
+  }
+
+  function saveAiSettings(input = {}) {
+    const existing = getAiSettings({ includeSecret: true });
+    const timestamp = nowIso();
+    const provider = String(input.provider || existing.provider || 'deepseek').trim() || 'deepseek';
+    const baseUrl = String(input.baseUrl || existing.baseUrl || 'https://api.deepseek.com').trim().replace(/\/+$/, '');
+    const model = String(input.model || existing.model || 'deepseek-v4-flash').trim() || 'deepseek-v4-flash';
+    const apiKeyInput = input.apiKey === undefined ? existing.apiKey : String(input.apiKey || '').trim();
+    if (!baseUrl || !model) {
+      throw new Error('INVALID_AI_SETTINGS');
+    }
+
+    db.prepare(`
+      INSERT INTO ai_settings (id, provider, base_url, model, api_key, created_at, updated_at)
+      VALUES ('default', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        provider = excluded.provider,
+        base_url = excluded.base_url,
+        model = excluded.model,
+        api_key = excluded.api_key,
+        updated_at = excluded.updated_at
+    `).run(
+      provider,
+      baseUrl,
+      model,
+      apiKeyInput,
+      existing.updatedAt || timestamp,
+      timestamp
+    );
+    return getAiSettings();
+  }
+
   function createDraft(input) {
     const draft = {
       id: input.id || `draft_${randomUUID()}`,
@@ -1012,6 +1077,7 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
       wechatConversations,
       wechatMessages: listRecentWechatMessages(20),
       aiReplyDrafts: listAiReplyDrafts(),
+      aiSettings: getAiSettings(),
       metrics: {
         totalTargets: targets.length,
         queuedDrafts: drafts.filter((draft) => draft.status === 'queued').length,
@@ -1094,6 +1160,8 @@ export function createStore({ dbPath = 'data/growth-agent.sqlite' } = {}) {
     createAiReplyDraft,
     updateAiReplyDraftStatus,
     listAiReplyDrafts,
+    getAiSettings,
+    saveAiSettings,
     getWechatPersonal,
     deleteTarget,
     createDraft,

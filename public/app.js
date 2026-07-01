@@ -7,6 +7,7 @@ const state = {
   wechatConversations: [],
   wechatMessages: [],
   aiReplyDrafts: [],
+  aiSettings: {},
   metrics: {}
 };
 
@@ -411,6 +412,7 @@ function render() {
   renderMetrics();
   renderWechatPersonal();
   renderMiniapps();
+  renderAiSettings();
   renderAssistant();
   renderCampaigns();
   renderTargets();
@@ -430,6 +432,30 @@ function setAuthStatus(status, message) {
   const el = $('#wechatAuthStatus');
   el.className = `auth-status ${status}`;
   el.textContent = message;
+}
+
+function setAiSettingsStatus(status, message) {
+  const el = $('#aiSettingsStatus');
+  if (!el) return;
+  el.className = `auth-status ${status}`;
+  el.textContent = message;
+}
+
+function renderAiSettings() {
+  const settings = state.aiSettings || {};
+  const baseUrl = $('#aiBaseUrl');
+  const model = $('#aiModel');
+  const apiKey = $('#aiApiKey');
+  if (!baseUrl || !model || !apiKey) return;
+  baseUrl.value = settings.baseUrl || 'https://api.deepseek.com';
+  model.value = settings.model || 'deepseek-v4-flash';
+  apiKey.value = '';
+  setAiSettingsStatus(
+    settings.apiKeyConfigured ? 'success' : 'idle',
+    settings.apiKeyConfigured
+      ? `DeepSeek 已配置：${settings.model || 'deepseek-v4-flash'}`
+      : '未配置 DeepSeek API Key 时会使用本地模板。'
+  );
 }
 
 function looksLikeWechatAuth(value) {
@@ -482,6 +508,26 @@ async function connectWechatMiniapp({ auto = false } = {}) {
     setAuthStatus('failed', `检测失败：${humanError(error)}`);
     if (!auto) toast(humanError(error));
   }
+}
+
+async function saveAiSettings(form) {
+  const values = formData(form);
+  const payload = {
+    provider: 'deepseek',
+    baseUrl: values.baseUrl,
+    model: values.model
+  };
+  if (String(values.apiKey || '').trim()) {
+    payload.apiKey = values.apiKey;
+  }
+  setAiSettingsStatus('checking', '正在保存 DeepSeek 配置...');
+  const settings = await api('/api/ai/settings', {
+    method: 'POST',
+    body: payload
+  });
+  state.aiSettings = settings;
+  renderAiSettings();
+  toast('DeepSeek 配置已保存');
 }
 
 function scheduleWechatConnect() {
@@ -648,6 +694,11 @@ $('#wechatConnectForm').addEventListener('submit', async (event) => {
 });
 
 $('#wechatAuthorizationText').addEventListener('input', scheduleWechatConnect);
+
+$('#aiSettingsForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await saveAiSettings(event.currentTarget);
+});
 
 $('#wechatSyncForm').addEventListener('submit', async (event) => {
   event.preventDefault();

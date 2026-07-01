@@ -39,3 +39,15 @@ test('UI exposes WeChat conversation assistant and AI reply draft workflow', () 
   assert.equal(script.includes('/api/ai/reply-drafts'), true);
   assert.equal(script.includes('/api/wechat-personal/send'), false);
 });
+
+test('UI exposes DeepSeek model settings without hardcoded secrets', () => {
+  const html = readFileSync('public/index.html', 'utf8');
+  const script = readFileSync('public/app.js', 'utf8');
+
+  assert.equal(html.includes('DeepSeek 模型配置'), true);
+  assert.equal(html.includes('https://api.deepseek.com'), true);
+  assert.equal(html.includes('deepseek-v4-flash'), true);
+  assert.equal(html.includes('只保存在本机 SQLite'), true);
+  assert.equal(script.includes('/api/ai/settings'), true);
+  assert.equal(script.includes('sk-test'), false);
+});

@@ -348,3 +348,29 @@ test('API syncs WCF conversations and generates an AI reply draft without sendin
     assert.equal(copyResult.body.status, 'copied');
   }, { wechatBridge, aiReplyClient });
 });
+
+test('API stores DeepSeek settings without returning the API key', async () => {
+  await withServer(async ({ baseUrl, store }) => {
+    const saveResult = await jsonFetch(`${baseUrl}/api/ai/settings`, {
+      method: 'POST',
+      body: {
+        provider: 'deepseek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-v4-flash',
+        apiKey: 'sk-test-deepseek'
+      }
+    });
+    const stateResult = await jsonFetch(`${baseUrl}/api/state`);
+    const stored = store.getAiSettings({ includeSecret: true });
+
+    assert.equal(saveResult.response.status, 200);
+    assert.equal(saveResult.body.provider, 'deepseek');
+    assert.equal(saveResult.body.baseUrl, 'https://api.deepseek.com');
+    assert.equal(saveResult.body.model, 'deepseek-v4-flash');
+    assert.equal(saveResult.body.apiKeyConfigured, true);
+    assert.equal(saveResult.body.apiKey, undefined);
+    assert.equal(stateResult.body.aiSettings.apiKeyConfigured, true);
+    assert.equal(stateResult.body.aiSettings.apiKey, undefined);
+    assert.equal(stored.apiKey, 'sk-test-deepseek');
+  });
+});
