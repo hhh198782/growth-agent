@@ -44,6 +44,17 @@ function normalizeMessage(item) {
   };
 }
 
+function humanBridgeError(error, baseUrl) {
+  const message = String(error?.message || error || '');
+  if (message === 'fetch failed' || /ECONNREFUSED|UND_ERR_CONNECT_TIMEOUT|ENOTFOUND|ETIMEDOUT/i.test(message)) {
+    return `未启动 WCF HTTP 桥接器；请先启动 wcf-http-server，默认地址 ${baseUrl}`;
+  }
+  if (/WCF_HTTP_404/.test(message)) {
+    return `已连接到 ${baseUrl}，但接口路径不匹配；请检查 WCF_STATUS_PATH/WCF_CONTACTS_PATH 配置`;
+  }
+  return message || 'WCF_BRIDGE_UNREACHABLE';
+}
+
 async function requestJson(fetchImpl, url, { timeoutMs = 2500 } = {}) {
   const response = await fetchImpl(url, {
     signal: AbortSignal.timeout(timeoutMs),
@@ -119,7 +130,7 @@ export function createWechatPersonalBridge({
           connected: false,
           mode: 'wcf_http',
           baseUrl: normalizedBaseUrl,
-          message: error.message || 'WCF_BRIDGE_UNREACHABLE'
+          message: humanBridgeError(error, normalizedBaseUrl)
         };
       }
     },
