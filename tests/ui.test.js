@@ -18,6 +18,8 @@ test('UI exposes personal WeChat scan login and group sync workflow', () => {
 
   assert.equal(html.includes('个人微信连接'), true);
   assert.equal(html.includes('WeChatFerry'), true);
+  assert.equal(html.includes('微信 4.1.10.53'), true);
+  assert.equal(html.includes('Windows 微信 3.9.x'), true);
   assert.equal(html.includes('扫码登录'), true);
   assert.equal(html.includes('同步微信群'), true);
   assert.equal(html.includes('不自动群发'), true);

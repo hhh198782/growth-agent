@@ -98,6 +98,10 @@
                   <span>个人微信连接</span>
                   <span class="badge warn">WeChatFerry / WCF</span>
                 </div>
+                <div class="compat-alert">
+                  当前 WCF 接入面向 Windows 微信 3.9.x。你截图里的微信 4.1.10.53 不能只靠打开
+                  127.0.0.1:9999 接入，需要换兼容的 3.9.x 环境，或改走后续 UI 自动化/手工复制模式。
+                </div>
                 <div class="wechat-login-grid">
                   <div class="login-guide" id="wechatLoginGuide">
                     <span class="guide-kicker">官方 Windows 微信</span>
@@ -159,7 +163,7 @@
                 <button class="primary-button" data-action="sync-wechat-conversations" type="button">同步会话</button>
               </div>
             </div>
-            <div class="assistant-status" id="assistantStatus">先启动 WCF 本机桥接器，再同步会话。</div>
+            <div class="assistant-status" id="assistantStatus">先确认微信版本兼容 WCF，再启动本机桥接器同步会话。</div>
             <div class="conversation-workbench">
               <div class="conversation-column">
                 <div class="column-title">会话</div>
