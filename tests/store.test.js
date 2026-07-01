@@ -253,3 +253,50 @@ test('store tracks personal WeChat scan login and syncs group targets', () => {
     cleanup();
   }
 });
+
+test('store syncs WeChat conversations, messages, and AI reply drafts', () => {
+  const { store, cleanup } = withStore();
+  try {
+    const synced = store.syncWechatConversations({
+      conversations: [
+        {
+          wxid: 'room_1@chatroom',
+          displayName: '装修交流群',
+          kind: 'group',
+          lastMessage: '图片太大怎么压缩？',
+          lastMessageAt: '2026-07-01T08:00:00.000Z'
+        }
+      ],
+      messages: [
+        {
+          wxid: 'room_1@chatroom',
+          externalId: 'msg_1',
+          senderName: '群友',
+          body: '图片太大怎么压缩？',
+          sentAt: '2026-07-01T08:00:00.000Z'
+        }
+      ]
+    });
+    const state = store.getState();
+    const conversation = state.wechatConversations[0];
+    const campaign = state.campaigns[0];
+    const aiDraft = store.createAiReplyDraft({
+      conversationId: conversation.id,
+      campaignId: campaign.id,
+      body: '可以试试这个小程序路径：/pages/compress/compress?source=test',
+      sourcePath: '/pages/compress/compress?source=test'
+    });
+    const copied = store.updateAiReplyDraftStatus(aiDraft.id, 'copied');
+
+    assert.equal(synced.conversations.length, 1);
+    assert.equal(synced.messages.length, 1);
+    assert.equal(synced.targets.length, 1);
+    assert.equal(conversation.displayName, '装修交流群');
+    assert.equal(state.wechatMessages.length, 1);
+    assert.equal(aiDraft.status, 'suggested');
+    assert.equal(aiDraft.conversationName, '装修交流群');
+    assert.equal(copied.status, 'copied');
+  } finally {
+    cleanup();
+  }
+});

@@ -110,6 +110,48 @@
         <section class="main-panel">
           <div class="metrics" id="metrics"></div>
 
+          <section class="panel assistant-panel">
+            <div class="section-head">
+              <div>
+                <h2>微信会话助手</h2>
+                <p>同步微信群/好友消息，让 AI 生成回复草稿和小程序链接；不自动发送。</p>
+              </div>
+              <div class="actions compact-actions">
+                <button class="small-button" data-action="check-wcf-bridge" type="button">检测 WCF</button>
+                <button class="primary-button" data-action="sync-wechat-conversations" type="button">同步会话</button>
+              </div>
+            </div>
+            <div class="assistant-status" id="assistantStatus">先启动 WCF 本机桥接器，再同步会话。</div>
+            <div class="conversation-workbench">
+              <div class="conversation-column">
+                <div class="column-title">会话</div>
+                <div class="conversation-list" id="conversationList"></div>
+              </div>
+              <div class="message-column">
+                <div class="column-title">最近消息</div>
+                <div class="message-list" id="messageList"></div>
+                <div class="reply-controls">
+                  <label>
+                    推广活动
+                    <select id="replyCampaignSelect"></select>
+                  </label>
+                  <label>
+                    AI 口吻/要求
+                    <textarea
+                      id="replyPrompt"
+                      rows="3"
+                      placeholder="例如：自然一点，只回答对方问题，不要硬广；合适时再带小程序路径。"
+                    ></textarea>
+                  </label>
+                  <button class="primary-button" data-action="generate-ai-reply" type="button">生成AI回复草稿</button>
+                </div>
+                <div class="ai-reply-box" id="aiReplyBox">
+                  <div class="empty">还没有 AI 回复草稿。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="section-head">
               <div>

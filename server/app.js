@@ -2,7 +2,9 @@ import { createReadStream, existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { generateDraft } from '../src/domain/content-generator.js';
 import { canCreateDraft } from '../src/domain/frequency-policy.js';
-import { makeSourceCode } from '../src/domain/source-code.js';
+import { buildMiniappPath, makeSourceCode } from '../src/domain/source-code.js';
+import { createAiReplyClient } from '../src/integrations/ai-reply-client.js';
+import { createWechatPersonalBridge } from '../src/integrations/wechat-personal-bridge.js';
 import {
   createWechatMiniappClient,
   parseWechatAuthorizationText
@@ -55,6 +57,21 @@ function readBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+function statusForError(error) {
+  if ([
+    'INVALID_JSON',
+    'BODY_TOO_LARGE',
+    'INVALID_WECHAT_CREDENTIALS',
+    'WECHAT_ACCESS_TOKEN_MISSING',
+    'INVALID_AI_REPLY'
+  ].includes(error.message)) {
+    return 400;
+  }
+  if (error.message?.startsWith('WCF_')) return 503;
+  if (error.message?.startsWith('AI_')) return 502;
+  return 500;
 }
 
 function serveStatic(req, res, staticDir) {
@@ -132,7 +149,13 @@ function splitTargetLabels(value) {
     .filter(Boolean);
 }
 
-export function createApp({ store, staticDir, wechatClient = createWechatMiniappClient() }) {
+export function createApp({
+  store,
+  staticDir,
+  wechatClient = createWechatMiniappClient(),
+  wechatBridge = createWechatPersonalBridge(),
+  aiReplyClient = createAiReplyClient()
+}) {
   return async function app(req, res) {
     const url = new URL(req.url, 'http://localhost');
 
@@ -178,6 +201,78 @@ export function createApp({ store, staticDir, wechatClient = createWechatMiniapp
         const body = await readBody(req);
         const labels = splitTargetLabels(body.labels);
         sendJson(res, 201, store.syncWechatTargets({ ...body, labels }));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/wechat-personal/bridge/status') {
+        const bridge = await wechatBridge.status();
+        const connection = bridge.connected
+          ? store.confirmWechatPersonalLogin({
+              displayName: bridge.displayName,
+              syncNote: `WCF 桥接器已连接：${bridge.baseUrl}`
+            })
+          : store.getWechatPersonal();
+        sendJson(res, 200, { bridge, connection });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/wechat-personal/sync-conversations') {
+        const body = await readBody(req);
+        const snapshot = await wechatBridge.syncConversations({ limit: body.limit });
+        sendJson(res, 201, store.syncWechatConversations(snapshot));
+        return;
+      }
+
+      const messageListMatch = url.pathname.match(/^\/api\/wechat-personal\/conversations\/([^/]+)\/messages$/);
+      if (req.method === 'GET' && messageListMatch) {
+        sendJson(res, 200, {
+          messages: store.listWechatMessages(messageListMatch[1], Number(url.searchParams.get('limit') || 30))
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/ai/reply-drafts') {
+        const body = await readBody(req);
+        const conversation = store.getWechatConversation(body.conversationId);
+        const campaign = store.getCampaign(body.campaignId);
+        if (!conversation) {
+          sendJson(res, 404, { error: 'WECHAT_CONVERSATION_NOT_FOUND' });
+          return;
+        }
+        if (!campaign) {
+          sendJson(res, 404, { error: 'CAMPAIGN_NOT_FOUND' });
+          return;
+        }
+        const channel = conversation.kind === 'friend' ? 'wechat_friend' : 'wechat_group';
+        const sourceCode = makeSourceCode({
+          channel,
+          toolId: campaign.toolId,
+          targetLabel: conversation.displayName
+        });
+        const sourcePath = buildMiniappPath(campaign.miniappPath, { source: sourceCode });
+        const messages = store.listWechatMessages(conversation.id, 20);
+        const generated = await aiReplyClient.generateReply({
+          conversation,
+          campaign,
+          messages,
+          sourcePath,
+          userPrompt: body.prompt
+        });
+        sendJson(res, 201, store.createAiReplyDraft({
+          conversationId: conversation.id,
+          campaignId: campaign.id,
+          messageId: body.messageId,
+          body: generated.body,
+          sourcePath,
+          safetyNote: generated.safetyNote
+        }));
+        return;
+      }
+
+      const aiReplyStatusMatch = url.pathname.match(/^\/api\/ai\/reply-drafts\/([^/]+)\/status$/);
+      if (req.method === 'PATCH' && aiReplyStatusMatch) {
+        const body = await readBody(req);
+        sendJson(res, 200, store.updateAiReplyDraftStatus(aiReplyStatusMatch[1], body.status));
         return;
       }
 
@@ -243,15 +338,7 @@ export function createApp({ store, staticDir, wechatClient = createWechatMiniapp
 
       serveStatic(req, res, staticDir);
     } catch (error) {
-      const status = [
-        'INVALID_JSON',
-        'BODY_TOO_LARGE',
-        'INVALID_WECHAT_CREDENTIALS',
-        'WECHAT_ACCESS_TOKEN_MISSING'
-      ].includes(error.message)
-        ? 400
-        : 500;
-      sendJson(res, status, { error: error.message || 'INTERNAL_ERROR' });
+      sendJson(res, statusForError(error), { error: error.message || 'INTERNAL_ERROR' });
     }
   };
 }

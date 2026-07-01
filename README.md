@@ -68,6 +68,40 @@ AppSecret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 7. 粘贴到 Windows 微信，人工确认后发送。
 8. 回到页面点击“标记发送”。
 
+## 微信会话助手
+
+Windows 微信已经登录后，还需要单独启动 WeChatFerry/WCF 的本机 HTTP 桥接器，网页才能同步显示微信群/好友会话。默认探测地址：
+
+```powershell
+$env:WCF_HTTP_URL="http://127.0.0.1:9999"
+```
+
+如果你的 wcf-http 接口路径不同，可以按实际服务改：
+
+```powershell
+$env:WCF_STATUS_PATH="/api/status"
+$env:WCF_CONTACTS_PATH="/api/contacts"
+$env:WCF_MESSAGES_PATH="/api/messages"
+```
+
+“微信会话助手”支持：
+
+- 检测 WCF 本机桥接器是否在线。
+- 同步微信群/好友会话到网页工作台。
+- 展示最近消息预览。
+- 选择推广活动后生成 AI 回复草稿，并自动带上小程序路径和 source 来源码。
+- 复制草稿到 Windows 微信里人工确认发送。
+
+大模型默认使用本地模板；如果要接 OpenAI 兼容接口，配置：
+
+```powershell
+$env:AI_API_BASE_URL="https://api.openai.com/v1"
+$env:AI_API_KEY="你的 API Key"
+$env:AI_MODEL="gpt-4o-mini"
+```
+
+这个系统没有自动发送微信消息的接口。AI 只生成建议文本，避免误发、刷屏和账号风险。
+
 批量添加白名单时，可以一行一个：
 
 ```text

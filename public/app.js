@@ -4,6 +4,9 @@ const state = {
   campaigns: [],
   targets: [],
   drafts: [],
+  wechatConversations: [],
+  wechatMessages: [],
+  aiReplyDrafts: [],
   metrics: {}
 };
 
@@ -12,6 +15,7 @@ const $ = (selector) => document.querySelector(selector);
 let authTimer = null;
 let authRequestId = 0;
 let lastSuccessfulAuthText = '';
+let selectedConversationId = '';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -133,12 +137,21 @@ function sourceLabel(miniapp) {
 
 function renderMiniapps() {
   const select = $('#miniappSelect');
+  const replySelect = $('#replyCampaignSelect');
   select.innerHTML = [
     '<option value="">选择一个小程序资料</option>',
     ...state.miniapps.map((miniapp) => `
       <option value="${escapeHtml(miniapp.id)}">${escapeHtml(miniapp.appName)} · ${escapeHtml(miniapp.toolName)}</option>
     `)
   ].join('');
+  if (replySelect) {
+    replySelect.innerHTML = [
+      '<option value="">选择推广活动</option>',
+      ...state.campaigns.map((campaign) => `
+        <option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)} · ${escapeHtml(campaign.toolName)}</option>
+      `)
+    ].join('');
+  }
 
   if (!state.miniapps.length) {
     $('#miniappList').innerHTML = '<div class="empty">还没有小程序资料。</div>';
@@ -225,6 +238,105 @@ function renderCampaigns() {
     .join('');
 }
 
+function renderAssistantStatus(message, status = 'idle') {
+  const el = $('#assistantStatus');
+  if (!el) return;
+  el.className = `assistant-status ${status}`;
+  el.textContent = message;
+}
+
+function conversationKindLabel(kind) {
+  return { group: '群聊', friend: '好友', service: '服务号', unknown: '未知' }[kind] || kind;
+}
+
+function selectedConversation() {
+  if (!selectedConversationId && state.wechatConversations.length) {
+    selectedConversationId = state.wechatConversations[0].id;
+  }
+  return state.wechatConversations.find((item) => item.id === selectedConversationId) || null;
+}
+
+function renderConversations() {
+  if (!state.wechatConversations.length) {
+    $('#conversationList').innerHTML = '<div class="empty">还没有同步到微信会话。先检测 WCF，再点“同步会话”。</div>';
+    return;
+  }
+  $('#conversationList').innerHTML = state.wechatConversations
+    .map((conversation) => `
+      <button
+        class="conversation-item ${conversation.id === selectedConversationId ? 'active' : ''}"
+        data-action="select-conversation"
+        data-id="${escapeHtml(conversation.id)}"
+        type="button"
+      >
+        <span>
+          <strong>${escapeHtml(conversation.displayName)}</strong>
+          <small>${escapeHtml(conversationKindLabel(conversation.kind))} · ${escapeHtml(conversation.wxid)}</small>
+        </span>
+        ${conversation.unreadCount ? `<b>${conversation.unreadCount}</b>` : ''}
+      </button>
+    `)
+    .join('');
+}
+
+function renderMessages() {
+  const conversation = selectedConversation();
+  if (!conversation) {
+    $('#messageList').innerHTML = '<div class="empty">选择一个会话后显示最近消息。</div>';
+    return;
+  }
+  const messages = state.wechatMessages.filter((message) => message.conversationId === conversation.id);
+  if (!messages.length) {
+    $('#messageList').innerHTML = '<div class="empty">这个会话还没有同步到最近消息。</div>';
+    return;
+  }
+  $('#messageList').innerHTML = messages
+    .map((message) => `
+      <article class="message-item ${message.direction}">
+        <div>
+          <strong>${escapeHtml(message.senderName || (message.direction === 'outbound' ? '我' : conversation.displayName))}</strong>
+          <small>${escapeHtml(message.sentAt)}</small>
+        </div>
+        <p>${escapeHtml(message.body)}</p>
+      </article>
+    `)
+    .join('');
+}
+
+function renderAiReplies() {
+  const conversation = selectedConversation();
+  const replies = state.aiReplyDrafts.filter((draft) => !conversation || draft.conversationId === conversation.id);
+  if (!replies.length) {
+    $('#aiReplyBox').innerHTML = '<div class="empty">还没有 AI 回复草稿。</div>';
+    return;
+  }
+  $('#aiReplyBox').innerHTML = replies
+    .map((draft) => `
+      <article class="ai-reply-card">
+        <div class="row-top">
+          <div>
+            <p class="row-title">${escapeHtml(draft.conversationName)} · ${escapeHtml(draft.campaignName)}</p>
+            <p class="row-meta">${escapeHtml(draft.safetyNote)}</p>
+          </div>
+          ${statusBadge(draft.status === 'suggested' ? 'queued' : draft.status)}
+        </div>
+        <pre class="draft-body">${escapeHtml(draft.body)}</pre>
+        <div class="actions">
+          <button class="small-button" data-action="copy-ai-reply" data-id="${draft.id}" type="button">复制草稿</button>
+          <button class="small-button danger-button" data-action="discard-ai-reply" data-id="${draft.id}" type="button">丢弃</button>
+        </div>
+      </article>
+    `)
+    .join('');
+}
+
+function renderAssistant() {
+  selectedConversation();
+  renderConversations();
+  renderMessages();
+  renderAiReplies();
+}
+
 function badgeForTarget(target) {
   if (!target.allowed) return '<span class="badge danger">禁用</span>';
   if (target.riskLevel === 'high') return '<span class="badge danger">高风险</span>';
@@ -299,6 +411,7 @@ function render() {
   renderMetrics();
   renderWechatPersonal();
   renderMiniapps();
+  renderAssistant();
   renderCampaigns();
   renderTargets();
   renderDrafts();
@@ -432,6 +545,65 @@ async function syncWechatTargets(form) {
   await loadState();
 }
 
+async function checkWcfBridge() {
+  renderAssistantStatus('正在检测 WCF 本机桥接器...', 'checking');
+  const result = await api('/api/wechat-personal/bridge/status');
+  state.wechatPersonal = result.connection;
+  renderWechatPersonal();
+  renderConnectionSummary();
+  if (result.bridge.connected) {
+    renderAssistantStatus(`已连接 WCF：${result.bridge.baseUrl}`, 'success');
+    toast('WCF 桥接器已连接');
+  } else {
+    renderAssistantStatus(`未检测到 WCF：${result.bridge.message}`, 'failed');
+    toast('未检测到 WCF 桥接器');
+  }
+}
+
+async function syncWechatConversations() {
+  renderAssistantStatus('正在同步微信会话...', 'checking');
+  const result = await api('/api/wechat-personal/sync-conversations', {
+    method: 'POST',
+    body: { limit: 80 }
+  });
+  state.wechatPersonal = result.connection;
+  await loadState();
+  renderAssistantStatus(`已同步 ${result.conversations.length} 个会话，新增 ${result.targets.length} 个转发目标`, 'success');
+  toast('微信会话已同步');
+}
+
+async function loadConversationMessages(conversationId) {
+  const result = await api(`/api/wechat-personal/conversations/${conversationId}/messages?limit=30`);
+  state.wechatMessages = result.messages;
+  renderAssistant();
+}
+
+async function generateAiReply() {
+  const conversation = selectedConversation();
+  const campaignId = $('#replyCampaignSelect').value;
+  if (!conversation) {
+    toast('先选择一个微信会话');
+    return;
+  }
+  if (!campaignId) {
+    toast('先选择一个推广活动');
+    return;
+  }
+  renderAssistantStatus('AI 正在生成回复草稿...', 'checking');
+  const draft = await api('/api/ai/reply-drafts', {
+    method: 'POST',
+    body: {
+      conversationId: conversation.id,
+      campaignId,
+      prompt: $('#replyPrompt').value
+    }
+  });
+  state.aiReplyDrafts = [draft, ...state.aiReplyDrafts.filter((item) => item.id !== draft.id)];
+  renderAssistant();
+  renderAssistantStatus('AI 回复草稿已生成；复制后到微信里人工确认发送。', 'success');
+  toast('AI 回复草稿已生成');
+}
+
 async function addManualTargets(form) {
   const values = formData(form);
   const labels = parseTargetLabels(values.labels);
@@ -507,6 +679,46 @@ document.body.addEventListener('click', async (event) => {
 
   if (action === 'confirm-wechat-login') {
     await confirmWechatLogin();
+    return;
+  }
+
+  if (action === 'check-wcf-bridge') {
+    await checkWcfBridge();
+    return;
+  }
+
+  if (action === 'sync-wechat-conversations') {
+    await syncWechatConversations();
+    return;
+  }
+
+  if (action === 'select-conversation') {
+    selectedConversationId = id;
+    await loadConversationMessages(id);
+    return;
+  }
+
+  if (action === 'generate-ai-reply') {
+    await generateAiReply();
+    return;
+  }
+
+  if (action === 'copy-ai-reply') {
+    const draft = state.aiReplyDrafts.find((item) => item.id === id);
+    if (!draft) return;
+    await copyText(draft.body);
+    const updated = await api(`/api/ai/reply-drafts/${id}/status`, { method: 'PATCH', body: { status: 'copied' } });
+    state.aiReplyDrafts = state.aiReplyDrafts.map((item) => (item.id === id ? updated : item));
+    renderAssistant();
+    toast('AI 草稿已复制，请到微信里人工确认发送');
+    return;
+  }
+
+  if (action === 'discard-ai-reply') {
+    const updated = await api(`/api/ai/reply-drafts/${id}/status`, { method: 'PATCH', body: { status: 'discarded' } });
+    state.aiReplyDrafts = state.aiReplyDrafts.map((item) => (item.id === id ? updated : item));
+    renderAssistant();
+    toast('AI 草稿已丢弃');
     return;
   }
 

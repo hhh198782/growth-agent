@@ -382,6 +382,158 @@ textarea:focus {
   font-size: 12px;
 }
 
+.assistant-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.assistant-status {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 9px 10px;
+}
+
+.assistant-status.checking {
+  background: #eef7ff;
+  border-color: #bddff7;
+  color: #15537d;
+}
+
+.assistant-status.success {
+  background: #e7f6ec;
+  border-color: #bfe4c9;
+  color: var(--ok);
+}
+
+.assistant-status.failed {
+  background: #fde8e6;
+  border-color: #f3b8b2;
+  color: var(--danger);
+}
+
+.conversation-workbench {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(210px, 0.85fr) minmax(0, 1.15fr);
+}
+
+.conversation-column,
+.message-column {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.column-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.conversation-list,
+.message-list {
+  display: grid;
+  gap: 8px;
+}
+
+.conversation-list {
+  max-height: 330px;
+  overflow: auto;
+}
+
+.conversation-item {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+  text-align: left;
+}
+
+.conversation-item.active,
+.conversation-item:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
+}
+
+.conversation-item small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.conversation-item b {
+  background: #fde8e6;
+  border-radius: 999px;
+  color: var(--danger);
+  font-size: 11px;
+  min-width: 20px;
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.message-list {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.message-item {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+}
+
+.message-item.outbound {
+  background: #eef7ff;
+}
+
+.message-item div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.message-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.message-item p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.reply-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-reply-box {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-reply-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 12px;
+}
+
 .campaign-list,
 .target-list,
 .draft-list {
@@ -519,7 +671,8 @@ textarea:focus {
 
   .workspace,
   .metrics,
-  .inline-form {
+  .inline-form,
+  .conversation-workbench {
     grid-template-columns: 1fr;
   }
 

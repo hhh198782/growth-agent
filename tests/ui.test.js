@@ -26,3 +26,16 @@ test('UI exposes personal WeChat scan login and group sync workflow', () => {
   assert.equal(script.includes('growth-agent://wechat-login'), false);
   assert.equal(script.includes('Array.from({ length: 121'), false);
 });
+
+test('UI exposes WeChat conversation assistant and AI reply draft workflow', () => {
+  const html = readFileSync('public/index.html', 'utf8');
+  const script = readFileSync('public/app.js', 'utf8');
+
+  assert.equal(html.includes('微信会话助手'), true);
+  assert.equal(html.includes('生成AI回复草稿'), true);
+  assert.equal(html.includes('不自动发送'), true);
+  assert.equal(script.includes('/api/wechat-personal/bridge/status'), true);
+  assert.equal(script.includes('/api/wechat-personal/sync-conversations'), true);
+  assert.equal(script.includes('/api/ai/reply-drafts'), true);
+  assert.equal(script.includes('/api/wechat-personal/send'), false);
+});

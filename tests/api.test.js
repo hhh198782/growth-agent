@@ -11,7 +11,13 @@ import { createStore } from '../src/store/sqlite-store.js';
 async function withServer(testFn, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'growth-agent-api-'));
   const store = createStore({ dbPath: join(dir, 'test.sqlite') });
-  const server = createServer(createApp({ store, staticDir: null, wechatClient: options.wechatClient }));
+  const server = createServer(createApp({
+    store,
+    staticDir: null,
+    wechatClient: options.wechatClient,
+    wechatBridge: options.wechatBridge,
+    aiReplyClient: options.aiReplyClient
+  }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -256,4 +262,89 @@ test('API starts personal WeChat scan login and syncs group targets', async () =
     assert.equal(stateResult.body.wechatPersonal.status, 'connected');
     assert.equal(stateResult.body.wechatPersonal.lastSyncCount, 2);
   });
+});
+
+test('API syncs WCF conversations and generates an AI reply draft without sending', async () => {
+  const wechatBridge = {
+    async status() {
+      return {
+        connected: true,
+        baseUrl: 'http://127.0.0.1:9999',
+        displayName: '个人微信小号'
+      };
+    },
+    async syncConversations() {
+      return {
+        conversations: [
+          {
+            wxid: '装修交流群@chatroom',
+            displayName: '装修交流群',
+            kind: 'group',
+            lastMessage: '图片太大怎么压缩？',
+            lastMessageAt: '2026-07-01T08:00:00.000Z'
+          },
+          {
+            wxid: 'friend_wxid',
+            displayName: '老客户',
+            kind: 'friend',
+            lastMessage: '有没有小工具？',
+            lastMessageAt: '2026-07-01T08:01:00.000Z'
+          }
+        ],
+        messages: [
+          {
+            wxid: '装修交流群@chatroom',
+            externalId: 'msg_1',
+            senderName: '群友',
+            body: '图片太大怎么压缩？',
+            sentAt: '2026-07-01T08:00:00.000Z'
+          }
+        ]
+      };
+    }
+  };
+  const aiReplyClient = {
+    async generateReply({ conversation, campaign, sourcePath }) {
+      return {
+        body: `给 ${conversation.displayName} 的建议：可以试试 ${campaign.toolName}\n${sourcePath}`,
+        safetyNote: 'AI 只生成草稿，人工确认后再发送。'
+      };
+    }
+  };
+
+  await withServer(async ({ baseUrl }) => {
+    const statusResult = await jsonFetch(`${baseUrl}/api/wechat-personal/bridge/status`);
+    const syncResult = await jsonFetch(`${baseUrl}/api/wechat-personal/sync-conversations`, {
+      method: 'POST',
+      body: { limit: 20 }
+    });
+    const stateResult = await jsonFetch(`${baseUrl}/api/state`);
+    const conversation = stateResult.body.wechatConversations.find((item) => item.displayName === '装修交流群');
+    const campaign = stateResult.body.campaigns[0];
+    const aiResult = await jsonFetch(`${baseUrl}/api/ai/reply-drafts`, {
+      method: 'POST',
+      body: {
+        conversationId: conversation.id,
+        campaignId: campaign.id,
+        prompt: '自然一点，不要硬广'
+      }
+    });
+    const copyResult = await jsonFetch(`${baseUrl}/api/ai/reply-drafts/${aiResult.body.id}/status`, {
+      method: 'PATCH',
+      body: { status: 'copied' }
+    });
+
+    assert.equal(statusResult.response.status, 200);
+    assert.equal(statusResult.body.bridge.connected, true);
+    assert.equal(syncResult.response.status, 201);
+    assert.equal(syncResult.body.conversations.length, 2);
+    assert.equal(syncResult.body.messages.length, 1);
+    assert.equal(stateResult.body.wechatConversations.length, 2);
+    assert.equal(stateResult.body.wechatMessages.length, 1);
+    assert.equal(aiResult.response.status, 201);
+    assert.match(aiResult.body.body, /装修交流群/);
+    assert.match(aiResult.body.body, /source=/);
+    assert.equal(aiResult.body.status, 'suggested');
+    assert.equal(copyResult.body.status, 'copied');
+  }, { wechatBridge, aiReplyClient });
 });
